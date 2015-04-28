@@ -126,12 +126,11 @@ public:
 
 
         //apply the dirichlet constraints, atm only for homogenous dirichlet constraints!
-        Spaces::Constraints::Dirichlet< typename GridViewType::Intersection, RangeFieldType >
-                dirichlet_constraints(boundary_info_, space_.mapper().maxNumDofs(), space_.mapper().maxNumDofs());
-        grid_walker.add(dirichlet_constraints, system_matrix_);
-        grid_walker.add(dirichlet_constraints, rhs_vector_);
-        grid_walker.walk();
-
+        Spaces::DirichletConstraints< typename GridViewType::Intersection >
+                dirichlet_constraints(boundary_info_, space_.mapper().maxNumDofs());
+        grid_walker.add(dirichlet_constraints);
+        grid_walker.assemble();
+        dirichlet_constraints.apply(system_matrix_, rhs_vector_);
         is_assembled_ = true;
       }
     } //assemble()

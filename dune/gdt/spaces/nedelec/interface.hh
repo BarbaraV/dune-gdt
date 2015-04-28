@@ -14,6 +14,8 @@ namespace Dune {
 namespace GDT {
 namespace Spaces {
 
+static constexpr ChooseSpaceBackend default_nedelec_backend = default_space_backend;
+
 template< class ImpTraits, size_t domainDim, size_t rangeDim, size_t rangeDimCols = 1 >
 class NedelecInterface
   :public SpaceInterface< ImpTraits, domainDim, rangeDim, rangeDimCols >
@@ -33,20 +35,15 @@ public:
   using typename BaseType::BoundaryInfoType;
   using typename BaseType::BaseFunctionSetType;
   using typename BaseType::PatternType;
-
-  //implement localDoFs and "Dirichlet"DoFs
-  //implement constraints
+private:
+  static const constexpr RangeFieldType compare_tolerance_ =1e-13;
+public:
 
   /**
    * \defgroup interface ´´These methods have to be implemented!''
    * @{
    **/
- /* std::vector< size_t > local_DoF_indices(const EntityType& entity) const
-  {
-    CHECK_CRTP(this->as_imp().local_DoF_indices(entity));
-    return this->as_imp().local_DoF_indices(entity);
-  } // ... local_DoF_indices(...)                                           // as in RTInterface
-*/
+
 
   std::set< size_t > local_dirichlet_DoFs(const EntityType& entity,
                                           const BoundaryInfoType& boundaryInfo) const
@@ -119,14 +116,13 @@ public:
     //(must be exactly dimDomain for polOrder 1!), these are added to localdirichletdofs
     const auto basis = this->base_function_set(entity);
     typedef typename BaseType::BaseFunctionSetType::RangeType RangeType;
-    const RangeType one(1);
     std::vector< RangeType > tmp_basis_values(basis.size(), RangeType(0));
     for (size_t cc = 0; cc < vertexoppDirirchlet.size(); ++cc) {
         basis.evaluate(vertexoppDirirchlet[cc], tmp_basis_values);
         size_t zeros = 0;
         size_t nonzeros = 0;
         for (size_t ii = 0; ii < basis.size(); ++ii) {
-            if (Stuff::Common::FloatCmp::eq(tmp_basis_values[ii] + one, one)) {
+            if (std::abs(tmp_basis_values[ii]) < compare_tolerance_) {
                 localDirichletDoFs.insert(ii);
                 ++zeros;
             } else
@@ -136,7 +132,6 @@ public:
     }
    return localDirichletDoFs;
   } //... local_dirichlet_DoFs_order0(...)
-    //might give a problem for an entity with a Dirichlet edge, which is not part of a Dirichlet intersection
 
   using BaseType::compute_pattern;
 
@@ -158,36 +153,18 @@ public:
   }
 
   template< class S, size_t d, size_t r, size_t rC >
-  void local_constraints(const SpaceInterface< S, d, r, rC >& other,
+  void local_constraints(const SpaceInterface< S, d, r, rC >& /*other*/,
                          const EntityType& entity,
-                         Constraints::Dirichlet< IntersectionType, RangeFieldType >& ret) const
+                         DirichletConstraints< IntersectionType >& ret) const
   {
     static_assert(polOrder == 1, "Not tested for higher polynomial orders!");
     static_assert(dimDomain == 3, "Not implemented!");
-    assert(this->grid_view().indexSet().contains(entity));
-    const std::set< size_t > localDirichletDofs = this->local_dirichlet_DoFs(entity, ret.boundary_info());
-    const size_t numRows = localDirichletDofs.size();
-    Dune::DynamicVector< size_t > tmpMappedRows;
-    Dune::DynamicVector< size_t > tmpMappedCols;
-    if (numRows > 0) {
-      const size_t numCols = this->mapper().numDofs(entity);
-      ret.set_size(numRows, numCols);
-      this->mapper().globalIndices(entity, tmpMappedRows);
-      other.mapper().globalIndices(entity, tmpMappedCols);
-      size_t localRow = 0;
-      for (const size_t& localDirichletDofIndex : localDirichletDofs) {
-        ret.global_row(localRow) = tmpMappedRows[localDirichletDofIndex];
-        for (size_t jj = 0; jj < ret.cols(); ++jj) {
-          ret.global_col(jj) = tmpMappedCols[jj];
-          if (tmpMappedCols[jj] == tmpMappedRows[localDirichletDofIndex])
-            ret.value(localRow, jj) = ret.set_row() ? 1 : 0;
-          else
-            ret.value(localRow, jj) = 0;
-        }
-        ++localRow;
+    const auto local_DoFs = this->local_dirichlet_DoFs(entity, ret.boundary_info());
+    if (local_DoFs.size() > 0) {
+      const auto global_indices = this->mapper().globalIndices(entity);
+      for (const auto& localDoF : local_DoFs) {
+          ret.insert(global_indices[localDoF]);
       }
-    } else {
-      ret.set_size(0, 0);
     }
   } //... local_constraints(..., Constraints::Dirichlet<...>....)   //as in CGInterface
 

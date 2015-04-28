@@ -200,6 +200,12 @@ public:
     return mapper_;
   }
 
+  std::set< size_t > local_dirichlet_DoFs(const EntityType& entity,
+                                          const BoundaryInfoType& boundaryInfo) const
+  {
+    return BaseType::local_dirichlet_DoFs_order_1(entity, boundaryInfo);
+  }
+
   BaseFunctionSetType base_function_set(const EntityType& entity) const
   {
     return BaseFunctionSetType(backend_, entity);
