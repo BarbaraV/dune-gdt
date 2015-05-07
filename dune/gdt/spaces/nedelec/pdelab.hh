@@ -136,6 +136,7 @@ public:
 
   using typename BaseType::PatternType;
   using typename BaseType::EntityType;
+  using typename BaseType::BoundaryInfoType;
 private:
   typedef typename Traits::FEMapType FEMapType;
 
