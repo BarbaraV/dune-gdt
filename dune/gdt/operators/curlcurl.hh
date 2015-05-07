@@ -26,7 +26,7 @@ namespace GDT {
 namespace Operators {
 
 //forward
-template< class MuFunctionType, class KappaFunctionType, class MatrixImp, class SourceSpaceImp,
+template< class FunctionType, class MatrixImp, class SourceSpaceImp,
           class RangeSpaceImp = SourceSpaceImp,
           class GridViewImp = typename SourceSpaceImp::GridViewType >
 class CurlCurl;
@@ -39,20 +39,18 @@ namespace internal {
  *
  *\sa CurlCurl
  */
-template< class MuFunctionType, class KappaFunctionType, class MatrixImp, class SourceSpaceImp,
+template< class FunctionType, class MatrixImp, class SourceSpaceImp,
           class RangeSpaceImp, class GridViewImp >
 class CurlCurlTraits
 {
-  static_assert(Stuff::is_localizable_function< MuFunctionType >::value,
-                "MuFunctionType has to be derived from Stuff::LocalizableFunctionInterface!");
-  static_assert(Stuff::is_localizable_function< KappaFunctionType >::value,
-                "KappaFunctionType has to be derived from Stuff::LocalizableFunctionInterface!");
+  static_assert(Stuff::is_localizable_function< FunctionType >::value,
+                "FunctionType has to be derived from Stuff::LocalizableFunctionInterface!");
   static_assert(Stuff::LA::is_matrix< MatrixImp >::value,
                 "MatrixImp has to be derived from Stuff::LA::MatrixInterface!");
   static_assert(is_space< SourceSpaceImp >::value, "SourceSpaceImp has to be derived from SpaceInterface!");
   static_assert(is_space< RangeSpaceImp >::value, "RangeSpaceImp has to be derived from SpaceInterface!");
 public:
-  typedef CurlCurl< MuFunctionType, KappaFunctionType, MatrixImp, SourceSpaceImp, RangeSpaceImp, GridViewImp >
+  typedef CurlCurl< FunctionType, MatrixImp, SourceSpaceImp, RangeSpaceImp, GridViewImp >
         derived_type;
   typedef MatrixImp MatrixType;
   typedef SourceSpaceImp SourceSpaceType;
@@ -63,7 +61,7 @@ public:
 } //namespace internal
 
 
-/** \brief Implements a (global) curlcurl+identity operator
+/** \brief Implements a (global) curlcurl operator
  * \note only implemented for scalar parameter functions at the moment, matrix-valued not sure whether they are supported
  *
  * \tparam MuFunctionType Type of the parameter function in the curlcurl part
@@ -73,24 +71,22 @@ public:
  * \tparam RangeSpaceImp Type of the test space
  * \tparam GridViewImp Type of the grid
  */
-template< class MuFunctionType, class KappaFunctionType, class MatrixImp, class SourceSpaceImp,
+template< class FunctionType, class MatrixImp, class SourceSpaceImp,
           class RangeSpaceImp, class GridViewImp >
 class CurlCurl
   : Stuff::Common::StorageProvider< MatrixImp >
-  , public Operators::MatrixBased< internal::CurlCurlTraits< MuFunctionType, KappaFunctionType, MatrixImp,
+  , public Operators::MatrixBased< internal::CurlCurlTraits< FunctionType, MatrixImp,
                                                              SourceSpaceImp, RangeSpaceImp, GridViewImp > >
   , public SystemAssembler< RangeSpaceImp, GridViewImp, SourceSpaceImp >
 {
   typedef Stuff::Common::StorageProvider< MatrixImp >  StorageProvider;
   typedef SystemAssembler< RangeSpaceImp, GridViewImp, SourceSpaceImp >                      AssemblerBaseType;
-  typedef Operators::MatrixBased< internal::CurlCurlTraits< MuFunctionType, KappaFunctionType, MatrixImp, SourceSpaceImp
+  typedef Operators::MatrixBased< internal::CurlCurlTraits< FunctionType, MatrixImp, SourceSpaceImp
                                                               , RangeSpaceImp, GridViewImp > > OperatorBaseType;
-  typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< MuFunctionType > >        LocalCurlOperatorType;
+  typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< FunctionType > >        LocalCurlOperatorType;
   typedef LocalAssembler::Codim0Matrix< LocalCurlOperatorType >                                  LocalCurlAssemblerType;
-  typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< KappaFunctionType > > LocalProdOperatorType;
-  typedef LocalAssembler::Codim0Matrix< LocalProdOperatorType > LocalProdAssemblerType;
   public:
-    typedef internal::CurlCurlTraits< MuFunctionType, KappaFunctionType, MatrixImp, SourceSpaceImp, RangeSpaceImp, GridViewImp>
+    typedef internal::CurlCurlTraits< FunctionType, MatrixImp, SourceSpaceImp, RangeSpaceImp, GridViewImp>
         Traits;
 
   typedef typename Traits::MatrixType      MatrixType;
@@ -107,8 +103,7 @@ class CurlCurl
     return range_space.compute_face_and_volume_pattern(grid_view, source_space);
   }
 
-  CurlCurl(const MuFunctionType& mu,
-           const KappaFunctionType& kappa,
+  CurlCurl(const FunctionType& mu,
            MatrixType& mtrx,
            const SourceSpaceType& src_space,
            const RangeSpaceType& rng_space,
@@ -117,18 +112,14 @@ class CurlCurl
       , OperatorBaseType(this->storage_access(), src_space, rng_space, grid_view)
       , AssemblerBaseType(rng_space, grid_view, src_space)
       , mu_(mu)
-      , kappa_(kappa)
       , local_curl_operator_(mu_)
       , local_curl_assembler_(local_curl_operator_)
-      , local_prod_operator_(kappa_)
-      , local_prod_assembler_(local_prod_operator_)
       , assembled_(false)
     {
        setup();
     }
 
-  CurlCurl(const MuFunctionType& mu,
-           const KappaFunctionType& kappa,
+  CurlCurl(const FunctionType& mu,
            const SourceSpaceType& src_space,
            const RangeSpaceType& rng_space,
            const GridViewType& grid_view)
@@ -138,18 +129,14 @@ class CurlCurl
       , OperatorBaseType(this->storage_access(), src_space, rng_space, grid_view)
       , AssemblerBaseType(rng_space, grid_view, src_space)
       , mu_(mu)
-      , kappa_(kappa)
       , local_curl_operator_(mu_)
       , local_curl_assembler_(local_curl_operator_)
-      , local_prod_operator_(kappa_)
-      , local_prod_assembler_(local_prod_operator_)
       , assembled_(false)
     {
        setup();
     }
 
-  CurlCurl(const MuFunctionType& mu,
-           const KappaFunctionType& kappa,
+  CurlCurl(const FunctionType& mu,
            MatrixType& mtrx,
            const SourceSpaceType& src_space,
            const RangeSpaceType& rng_space)
@@ -157,18 +144,14 @@ class CurlCurl
       , OperatorBaseType(this->storage_access(), src_space, rng_space)
       , AssemblerBaseType(rng_space, src_space)
       , mu_(mu)
-      , kappa_(kappa)
       , local_curl_operator_(mu_)
       , local_curl_assembler_(local_curl_operator_)
-      , local_prod_operator_(kappa_)
-      , local_prod_assembler_(local_prod_operator_)
       , assembled_(false)
     {
        setup();
     }
 
-  CurlCurl(const MuFunctionType& mu,
-           const KappaFunctionType& kappa,
+  CurlCurl(const FunctionType& mu,
            const SourceSpaceType& src_space,
            const RangeSpaceType& rng_space)
       : StorageProvider(new MatrixType(rng_space.mapper().size(),
@@ -177,47 +160,36 @@ class CurlCurl
       , OperatorBaseType(this->storage_access(), src_space, rng_space)
       , AssemblerBaseType(rng_space, src_space)
       , mu_(mu)
-      , kappa_(kappa)
       , local_curl_operator_(mu_)
       , local_curl_assembler_(local_curl_operator_)
-      , local_prod_operator_(kappa_)
-      , local_prod_assembler_(local_prod_operator_)
       , assembled_(false)
     {
        setup();
     }
 
-  CurlCurl(const MuFunctionType& mu,
-           KappaFunctionType& kappa,
+  CurlCurl(const FunctionType& mu,
            MatrixType& mtrx,
            const SourceSpaceType& src_space)
       : StorageProvider(mtrx)
       , OperatorBaseType(this->storage_access(), src_space)
       , AssemblerBaseType(src_space)
       , mu_(mu)
-      , kappa_(kappa)
       , local_curl_operator_(mu_)
       , local_curl_assembler_(local_curl_operator_)
-      , local_prod_operator_(kappa_)
-      , local_prod_assembler_(local_prod_operator_)
       , assembled_(false)
     {
       setup();
     }
 
-  CurlCurl(const MuFunctionType& mu,
-           const KappaFunctionType& kappa,
+  CurlCurl(const FunctionType& mu,
            const SourceSpaceType& src_space)
       : StorageProvider(new MatrixType(src_space.mapper().size(), src_space.mapper().size(),
                                        pattern(src_space)))
       , OperatorBaseType(this->storage_access(), src_space)
       , AssemblerBaseType(src_space)
       , mu_(mu)
-      , kappa_(kappa)
       , local_curl_operator_(mu_)
       , local_curl_assembler_(local_curl_operator_)
-      , local_prod_operator_(kappa_)
-      , local_prod_assembler_(local_prod_operator_)
       , assembled_(false)
     {
        setup();
@@ -238,15 +210,11 @@ private:
   void setup()
   {
     this->add(local_curl_assembler_, this->matrix());
-    this->add(local_prod_assembler_, this->matrix());
   } //... setup()
 
-  const MuFunctionType& mu_;
-  const KappaFunctionType& kappa_;
+  const FunctionType& mu_;
   const LocalCurlOperatorType local_curl_operator_;
   const LocalCurlAssemblerType local_curl_assembler_;
-  const LocalProdOperatorType local_prod_operator_;
-  const LocalProdAssemblerType local_prod_assembler_;
   bool assembled_;
 };  //class CurlCurl
 
