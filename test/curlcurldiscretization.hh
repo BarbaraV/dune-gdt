@@ -32,11 +32,10 @@
 #include <dune/gdt/functionals/l2.hh>
 #include <dune/gdt/assembler/system.hh>
 #include <dune/gdt/spaces/constraints.hh>
-#include <dune/gdt/operators/projections.hh>
 
-namespace Curlcurl {
 
-/** \brief Class to discrteize curl-curl problems
+
+/** \brief Class to discretize curl-curl problems
  *
  * Problems of the form curl(mu curl E)+kappa E= f are solved, which admit a unique solution if the complex parameter kappa has positive imaginary part.
  * The discretization uses Nedelec spaces of the first family in lowest order on simplicial grids. The functions and parameters can be complex-valued.
@@ -52,23 +51,23 @@ namespace Curlcurl {
 
 template< class GridViewType,
           int polynomialOrder,
-          class MatrixImp = typename Dune::Stuff::LA::Container< std::complex< double > >::MatrixType,             //geht das so mit komplexen Zahlen?
-          class VectorImp = typename Dune::Stuff::LA::Container< std::complex< double > >::VectorType>
+          class MatrixImp = Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::istl_sparse >::MatrixType,  //Matrix-interface atm inable to handle complex!
+          class VectorImp = Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::istl_sparse >::VectorType >
 class Discretization{
 public:
     static const size_t dimDomain = GridViewType::dimension;
     typedef typename GridViewType::ctype DomainFieldType;
     static const size_t dimRange = dimDomain;
-    typedef std::complex< double > RangeFieldType;      //muss das komplex sein?
     static const unsigned int polOrder = polynomialOrder;
 
     typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename GridViewType::Intersection > BoundaryInfoType;
-    typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, RangeFieldType, dimRange > FunctionType; //nur ein Typ?
+    typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, std::complex< double >, dimRange > FunctionType1;
+    typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, dimRange > FunctionType2;
 
     typedef MatrixImp MatrixType;
     typedef VectorImp VectorType;
 
-    typedef Dune::GDT::Spaces::Nedelec::PdelabBased< GridViewType, polOrder, RangeFieldType, dimRange > SpaceType;
+    typedef Dune::GDT::Spaces::Nedelec::PdelabBased< GridViewType, polOrder, double, dimRange > SpaceType;
 
     typedef Dune::GDT::DiscreteFunction< SpaceType, VectorType > DiscreteFunctionType;
     typedef Dune::GDT::ConstDiscreteFunction < SpaceType, VectorType > ConstDiscreteFunctionType;
@@ -76,9 +75,9 @@ public:
 
     Discretization(const GridViewType& gp,
                    const BoundaryInfoType& info,
-                   const FunctionType& mu,
-                   const FunctionType& kappa,
-                   const FunctionType& src)
+                   const FunctionType2& mu,
+                   const FunctionType1& kappa,
+                   const FunctionType1& src)
         : space_(gp)
         , boundary_info_(info)
         , mu_(mu)
@@ -105,24 +104,27 @@ public:
       using namespace Dune::GDT;
       if (!is_assembled_) {
         //prepare
-        typedef Operators::CurlCurl< FunctionType, FunctionType, MatrixType, SpaceType > CurlcurlOperatorType;
-        system_matrix_ = MatrixType(space_.mapper().size(), space_.mapper().size(), CurlcurlOperatorType::pattern(space_));
+        Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_face_and_volume_pattern();
+        system_matrix_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
         rhs_vector_ = VectorType(space_.mapper().size());
-        dirichlet_shift_vector_ = VectorType(space_.mapper().size());
+        SystemAssembler< SpaceType > grid_walker(space_);
 
-        //define rhs_vector and lhs_operator
-        typedef GDT::Functionals::L2Volume< FunctionType, VectorType, SpaceType > L2FunctionalType;
+        //rhs
+        typedef GDT::Functionals::L2Volume< FunctionType1, VectorType, SpaceType > L2FunctionalType;
         L2FunctionalType source_functional(sourceterm_, rhs_vector_, space_);
-        CurlcurlOperatorType curlcurl_operator(mu_, kappa_, system_matrix_, space_);
+        grid_walker.add(source_functional);
+
+        //lhs
+        typedef GDT::Operators::CurlCurl< FunctionType2, MatrixType, SpaceType > CurlOperatorType;
+        CurlOperatorType curlcurl_operator(mu_, system_matrix_, space_);
+        grid_walker.add(curlcurl_operator);
+        typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< FunctionType1 > > IdOperatorType;
+        const IdOperatorType identity_operator(kappa_);
+        const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler(identity_operator);
+        grid_walker.add(idMatrixAssembler, system_matrix_);
 
         //for non-homogeneous dirichlet boundary values you have to implement an appropriate DirichletProjection!
         //afterwards, the same procedure as in elliptic-cg-discretization can be used
-
-        //assemble everything
-        SystemAssembler< SpaceType > grid_walker(space_);
-        grid_walker.add(curlcurl_operator);
-        grid_walker.add(source_functional);
-        grid_walker.walk();
 
 
         //apply the dirichlet constraints, atm only for homogenous dirichlet constraints!
@@ -166,15 +168,15 @@ public:
 private:
     const SpaceType space_;
     const BoundaryInfoType& boundary_info_;
-    const FunctionType& mu_;
-    const FunctionType& kappa_;
-    const FunctionType& sourceterm_;
+    const FunctionType2& mu_;
+    const FunctionType1& kappa_;
+    const FunctionType1& sourceterm_;
     mutable bool is_assembled_;
     mutable MatrixType system_matrix_;
     mutable VectorType rhs_vector_;
 }; //class discretization
 
-} //namespace CurlCurl
+
 
 
 #endif // DUNE_GDT_TEST_CURLCURLDISCRETIZATION_HH
