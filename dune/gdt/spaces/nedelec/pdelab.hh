@@ -13,7 +13,7 @@
 #include <dune/geometry/genericgeometry/topologytypes.hh>
 #include <dune/geometry/referenceelements.hh>
 
-#include <dune/grid/utility/vertexorderfactory.hh>  //brauchen irgendwas fuer vertexorder
+#include <dune/grid/utility/vertexorderfactory.hh>
 #include <dune/grid/common/grid.hh>
 #include <dune/grid/common/capabilities.hh>
 
@@ -78,7 +78,7 @@ private:
   template< class G >
   struct FeMap< G, true, true >
   {
-    typedef Dune::VertexOrderByIdFactory< typename G::GlobalIdSet, size_t> VertexOrderFactory;  //passt das so mit dem IndexSet?
+    typedef Dune::VertexOrderByIdFactory< typename G::LocalIdSet, size_t> VertexOrderFactory;  //passt das so mit dem IndexSet?
     typedef PDELab::EdgeS0_5FiniteElementMap< typename G::template Codim<0>::Geometry,
                                               VertexOrderFactory, RangeFieldType > Type;   //richtige Template-Argumente?
                                                                        //wie VertexOrder?
@@ -139,11 +139,14 @@ public:
   using typename BaseType::BoundaryInfoType;
 private:
   typedef typename Traits::FEMapType FEMapType;
+  typedef typename GridViewType::Grid::LocalIdSet LocalIdSet;
+  typedef Dune::VertexOrderByIdFactory< LocalIdSet, size_t > VertexOrderFactory;
 
 public:
   PdelabBased(GridViewType gV)
     : grid_view_(gV)
-    , fe_map_(grid_view_)
+    , vertex_order_factory_(grid_view_.grid().localIdSet())          // in den Konstruktor gehoert ein id_set!
+    , fe_map_(vertex_order_factory_)   //in den Konstruktor gehoert die Vertexorder!
     , backend_(grid_view_, fe_map_)
     , mapper_(backend_)
     , communicator_(CommunicationChooser< GridViewType >::create(grid_view_))
@@ -156,8 +159,9 @@ public:
    *        (see https://github.com/pymor/dune-gdt/issues/28)
    */
   PdelabBased(const ThisType& other)
-    : grid_view_(other.grid_view_)
-    , fe_map_(grid_view_)
+    : grid_view_(other.grid_view_)         //is that possible and do we want that?
+    , vertex_order_factory_(grid_view_.grid().localIdSet())
+    , fe_map_(vertex_order_factory_)
     , backend_(grid_view_, fe_map_)
     , mapper_(backend_)
     , communicator_(CommunicationChooser< GridViewType >::create(grid_view_))
@@ -175,7 +179,8 @@ public:
    */
   PdelabBased(ThisType&& source)
     : grid_view_(source.grid_view_)
-    , fe_map_(grid_view_)
+    , vertex_order_factory_(grid_view_.grid().localIdSet())
+    , fe_map_(vertex_order_factory_)   //geht nicht!
     , backend_(grid_view_, fe_map_)
     , mapper_(backend_)
     , communicator_(std::move(source.communicator_))
@@ -224,6 +229,7 @@ public:
 
 private:
   GridViewType grid_view_;
+  const VertexOrderFactory vertex_order_factory_;
   const FEMapType fe_map_;
   const BackendType backend_;
   const MapperType mapper_;
