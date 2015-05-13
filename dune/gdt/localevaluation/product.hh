@@ -232,6 +232,27 @@ public:
   } // ... evaluate(...)
 
   /**
+   * \brief computes a product evaluation between vector-valued function and vector-valued test function
+   */
+  template< class R, size_t r >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicVector< R >& ret) const
+  {
+    // evaluate local function
+    const auto functionValue = localFunction.evaluate(localPoint);
+    // evaluate test base
+    const size_t size = testBase.size();
+    const auto testValues= testBase.evaluate(localPoint);
+    // compute product
+    assert(ret.size() >= size);
+    for (size_t ii = 0; ii < size; ++ii) {
+      ret[ii] = functionValue * testValues[ii];
+    }
+  } // ... evaluate(...)
+
+  /**
    * \brief Computes a product evaluation for a scalar local function and scalar or vector valued basefunctionsets.
    * \note  for `LocalEvaluation::Codim0Interface< ..., 2 >`
    */
