@@ -355,7 +355,7 @@ class HcurlTransformedPdelabWrapper< PdelabSpaceType, EntityImp, DomainFieldImp,
 {
   typedef HcurlTransformedPdelabWrapper
     < PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 > ThisType;
-  typedef BaseFunctionSetInterface< internal::PiolaTransformedPdelabWrapperTraits< PdelabSpaceType, EntityImp,
+  typedef BaseFunctionSetInterface< internal::HcurlTransformedPdelabWrapperTraits< PdelabSpaceType, EntityImp,
                                                                       DomainFieldImp, domainDim,
                                                                       RangeFieldImp, rangeDim >,
                                     DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >

@@ -14,7 +14,7 @@ namespace Dune {
 namespace GDT {
 namespace Spaces {
 
-static constexpr ChooseSpaceBackend default_nedelec_backend = default_space_backend;
+//static constexpr ChooseSpaceBackend default_nedelec_backend = default_space_backend;
 
 template< class ImpTraits, size_t domainDim, size_t rangeDim, size_t rangeDimCols = 1 >
 class NedelecInterface
@@ -77,7 +77,7 @@ public:
    * @return a set of local indices which lie on the Dirichlet boundary
    * @todo implement this as it was recently done for elliptic problems to avoid problems with edges which are not part of a full Dirichlet face!
    */
-  std::set< size_t > local_dirichlet_DoFs_order1(const EntityType& entity,
+  std::set< size_t > local_dirichlet_DoFs_order_1(const EntityType& entity,
                                                  const BoundaryInfoType& boundaryInfo) const
   {
     static_assert(polOrder == 1, "Not tested for higher polynomial orders!");
@@ -122,7 +122,7 @@ public:
         size_t zeros = 0;
         size_t nonzeros = 0;
         for (size_t ii = 0; ii < basis.size(); ++ii) {
-            if (std::abs(tmp_basis_values[ii]) < compare_tolerance_) {
+            if (tmp_basis_values[ii].two_norm() < compare_tolerance_) {
                 localDirichletDoFs.insert(ii);
                 ++zeros;
             } else
