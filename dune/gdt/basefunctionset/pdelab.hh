@@ -46,7 +46,7 @@ class PiolaTransformedPdelabWrapper
 template< class PdelabSpaceImp, class EntityImp,
           class DomainFieldImp, size_t domainDim,
           class RangeFieldImp, size_t rangeDim, size_t rangeDimCols = 1 >
-class HcurlTransformedPdelabWrapper
+class Edges05PdelabWrapper
 {
   static_assert(Dune::AlwaysFalse< PdelabSpaceImp >::value, "Untested for these dimensions!");
 };
@@ -100,19 +100,19 @@ private:
 };
 
 //new
-/** \brief Traits for the class HcurlTransformedPdelabWrapper
+/** \brief Traits for the class Edges05PdelabWrapper
  *
- * \sa HcurlTransformedPdelabWrapper
+ * \sa Edges05PdelabWrapper
 */
 template< class PdelabSpaceImp, class EntityImp,
           class DomainFieldImp, size_t domainDim,
           class RangeFieldImp, size_t rangeDim >
-class HcurlTransformedPdelabWrapperTraits
+class Edges05PdelabWrapperTraits
 {
   static_assert(domainDim == rangeDim, "Untested!");
   static_assert(domainDim == 3, "Untested!");
 public:
-  typedef HcurlTransformedPdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim >
+  typedef Edges05PdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim >
       derived_type;
 private:
   typedef PDELab::LocalFunctionSpace< PdelabSpaceImp, PDELab::TrialSpaceTag > PdelabLFSType;
@@ -121,7 +121,7 @@ public:
   typedef typename FESwitchType::Basis BackendType;
   typedef EntityImp EntityType;
 private:
-  friend class HcurlTransformedPdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >;
+  friend class Edges05PdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >;
 };
 
 
@@ -347,21 +347,21 @@ private:
 template< class PdelabSpaceType, class EntityImp,
           class DomainFieldImp, size_t domainDim,
           class RangeFieldImp, size_t rangeDim >
-class HcurlTransformedPdelabWrapper< PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >
-  : public BaseFunctionSetInterface< internal::HcurlTransformedPdelabWrapperTraits< PdelabSpaceType, EntityImp,
+class Edges05PdelabWrapper< PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >
+  : public BaseFunctionSetInterface< internal::Edges05PdelabWrapperTraits< PdelabSpaceType, EntityImp,
                                                                        DomainFieldImp, domainDim,
                                                                        RangeFieldImp, rangeDim >,
                                      DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >
 {
-  typedef HcurlTransformedPdelabWrapper
+  typedef Edges05PdelabWrapper
     < PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 > ThisType;
-  typedef BaseFunctionSetInterface< internal::HcurlTransformedPdelabWrapperTraits< PdelabSpaceType, EntityImp,
+  typedef BaseFunctionSetInterface< internal::Edges05PdelabWrapperTraits< PdelabSpaceType, EntityImp,
                                                                       DomainFieldImp, domainDim,
                                                                       RangeFieldImp, rangeDim >,
                                     DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >
       BaseType;
 public:
-  typedef internal::HcurlTransformedPdelabWrapperTraits< PdelabSpaceType, EntityImp,
+  typedef internal::Edges05PdelabWrapperTraits< PdelabSpaceType, EntityImp,
                                             DomainFieldImp, domainDim,
                                             RangeFieldImp, rangeDim >
                                          Traits;
@@ -378,7 +378,7 @@ public:
   using typename BaseType::RangeType;
   using typename BaseType::JacobianRangeType;
 
-  HcurlTransformedPdelabWrapper(const PdelabSpaceType& space, const EntityType& ent)
+  Edges05PdelabWrapper(const PdelabSpaceType& space, const EntityType& ent)
     : BaseType(ent)
     , tmp_domain_(DomainFieldType(0))
     , tmp_jacobian_transposed_(DomainFieldType(0))
@@ -392,9 +392,9 @@ public:
     tmp_jacobian_ranges_ = std::vector< JacobianRangeType >(backend_->size(), JacobianRangeType(0));
   } // PdelabWrapper(...)
 
-  HcurlTransformedPdelabWrapper(ThisType&& source) = default;
+  Edges05PdelabWrapper(ThisType&& source) = default;
 
-  HcurlTransformedPdelabWrapper(const ThisType& /*other*/) = delete;
+  Edges05PdelabWrapper(const ThisType& /*other*/) = delete;
 
   ThisType& operator=(const ThisType& /*other*/) = delete;
 
@@ -417,6 +417,11 @@ public:
   {
     assert(lfs_);
     assert(backend_);
+    assert(ret.size() >= backend_->size());
+    backend_->evaluateFunction(xx, ret);
+    //evaluateFunction for edges05 already gives the value on the lement and not in the reference configuration, so no mapping here
+    /*assert(lfs_);
+    assert(backend_);
     assert(tmp_ranges_.size() >= backend_->size());
     assert(ret.size() >= backend_->size());
     backend_->evaluateFunction(xx, tmp_ranges_);
@@ -424,7 +429,7 @@ public:
     tmp_jacobian_inverse_transposed_ = geometry.jacobianInverseTransposed(xx);
     for (size_t ii = 0; ii < backend_->size(); ++ii) {
       tmp_jacobian_inverse_transposed_.mv(tmp_ranges_[ii], ret[ii]);  //stimmt das?
-    }
+    }*/
   } // ... evaluate(...)
 
   using BaseType::evaluate;
@@ -432,6 +437,10 @@ public:
   virtual void jacobian(const DomainType& xx, std::vector< JacobianRangeType >& ret) const override final
   {
     assert(lfs_);
+    assert(backend_);
+    assert(ret.size() >= backend_->size());
+    backend_->evaluateJacobian(xx, ret);
+   /* assert(lfs_);
     assert(backend_);
     assert(ret.size() >= backend_->size());
     backend_->evaluateJacobian(xx, tmp_jacobian_ranges_);
@@ -443,7 +452,7 @@ public:
         tmp_jacobian_transposed_.mtv(tmp_jacobian_ranges_[ii][jj], ret[ii][jj]);
         ret[ii][jj] /= integration_element;    //stimmt das?
       }
-    }
+    } */
   } // ... jacobian(...)
 
   using BaseType::jacobian;
@@ -456,7 +465,7 @@ private:
   std::unique_ptr< const BackendType > backend_;
   mutable std::vector< RangeType > tmp_ranges_;
   mutable std::vector< JacobianRangeType > tmp_jacobian_ranges_;
-}; // class HcurlTransformedPdelabWrapper
+}; // class Edges05PdelabWrapper
 
 #else // HAVE_DUNE_PDELAB
 
@@ -482,7 +491,7 @@ class PiolaTransformedPdelabWrapper
 template< class PdelabSpaceImp, class EntityImp,
           class DomainFieldImp, size_t domainDim,
           class RangeFieldImp, size_t rangeDim, size_t rangeDimCols = 1 >
-class HcurlTransformedPdelabWrapper
+class Edges05PdelabWrapper
 {
   static_assert(AlwaysFalse< PdelabSpaceImp >::value, "You are missing dune-pdelab!");
 };

@@ -93,7 +93,7 @@ public:
   typedef PDELab::GridFunctionSpace< GridViewType, FEMapType > BackendType;
   typedef Mapper::ContinuousPdelabWrapper< BackendType > MapperType;
   typedef typename GridViewType::template Codim< 0 >::Entity EntityType;
-  typedef BaseFunctionSet::HcurlTransformedPdelabWrapper
+  typedef BaseFunctionSet::Edges05PdelabWrapper
       < BackendType, EntityType, DomainFieldType, dimDomain, RangeFieldType, rangeDim, rangeDimCols >
     BaseFunctionSetType;
   static const Stuff::Grid::ChoosePartView part_view_type = Stuff::Grid::ChoosePartView::view;
