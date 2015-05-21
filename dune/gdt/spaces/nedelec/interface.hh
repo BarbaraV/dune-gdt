@@ -75,7 +75,6 @@ public:
    * @param entity Entity on which the dirichlet dofs are computed
    * @param boundaryInfo Boundary Info to give the (local) Dirichlet boundary
    * @return a set of local indices which lie on the Dirichlet boundary
-   * @todo implement this as it was recently done for elliptic problems to avoid problems with edges which are not part of a full Dirichlet face!
    */
   std::set< size_t > local_dirichlet_DoFs_order_1(const EntityType& entity,
                                                  const BoundaryInfoType& boundaryInfo) const
@@ -88,7 +87,9 @@ public:
     std::set< size_t > localDirichletDoFs;
     std::vector< DomainType > vertexoppDirirchlet;
     DomainType corner(0);
+    const auto& reference_element = ReferenceElements< DomainFieldType, dimDomain >::general(entity.type());
     const auto num_vertices = boost::numeric_cast< size_t >(entity.template count< dimDomain >());
+    std::vector< bool > liesonintersection(num_vertices, false);
     //get all dirichlet edges of this entity
     //loop over all intersections
     const auto intersection_it_end = this->grid_view().iend(entity);
@@ -100,16 +101,30 @@ public:
         //actual dirichlet intersections+process bdries for parallel run
         if (boundaryInfo.dirichlet(intersection) || (!intersection.neighbor() && !intersection.boundary())) {
             const auto geometry = intersection.geometry();
-            //get the vertex opposite to that intersection
+            //check which vertices lie on the intersection
             for (size_t vv = 0; vv < num_vertices; ++vv) {
                 const auto vertex_ptr = entity.template subEntity< dimDomain >(boost::numeric_cast< int >(vv));
                 const auto& vertex = *vertex_ptr;
                 for (auto cc : DSC::valueRange(geometry.corners())) {
                     corner = geometry.corner(boost::numeric_cast< int >(cc));
-                    if (!Stuff::Common::FloatCmp::eq(vertex.geometry().center(), corner))
-                        vertexoppDirirchlet.emplace_back(vertex.geometry().center());
+                    if (Stuff::Common::FloatCmp::eq(vertex.geometry().center(), corner))
+                        liesonintersection[vv] = true;
                 } //loop over all corners of the intersection
             } //loop over all vertices
+            //now get the vertex opposite to the intersection (i.e. the one which does not lie on it)
+            size_t found = 0;
+            size_t missed = 0;
+            for (size_t vvv = 0; vvv < num_vertices; ++vvv) {
+                if (!(liesonintersection[vvv])) {
+                    vertexoppDirirchlet.emplace_back(reference_element.position(vvv, dimDomain));
+                    ++found;
+                } else
+                    ++missed;
+                //clear for next intersection
+                liesonintersection[vvv] = false;
+            } //loop over all vertices
+            //assert only one opposite vertex was found
+            assert(found == 1 && missed == dimDomain && "This must not happen for tetrahedral meshes!");
         } //only work on dirichlet intersections
     } //loop over all intersections
     // get all the basefunctions which evaluate to 0 there
