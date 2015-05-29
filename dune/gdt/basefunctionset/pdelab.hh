@@ -112,7 +112,7 @@ class Edges05PdelabWrapperTraits
   static_assert(domainDim == rangeDim, "Untested!");
   static_assert(domainDim == 3, "Untested!");
 public:
-  typedef Edges05PdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim >
+  typedef Edges05PdelabWrapper< PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim >
       derived_type;
 private:
   typedef PDELab::LocalFunctionSpace< PdelabSpaceImp, PDELab::TrialSpaceTag > PdelabLFSType;
@@ -121,7 +121,7 @@ public:
   typedef typename FESwitchType::Basis BackendType;
   typedef EntityImp EntityType;
 private:
-  friend class Edges05PdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >;
+  friend class Edges05PdelabWrapper< PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >;
 };
 
 
@@ -364,7 +364,7 @@ public:
   typedef internal::Edges05PdelabWrapperTraits< PdelabSpaceType, EntityImp,
                                             DomainFieldImp, domainDim,
                                             RangeFieldImp, rangeDim >
-                                         Traits;
+      Traits;
   typedef typename Traits::BackendType   BackendType;
   typedef typename Traits::EntityType    EntityType;
 private:
@@ -373,10 +373,10 @@ private:
 
 public:
   using typename BaseType::DomainFieldType;
-  using BaseType::dimDomain;
   using typename BaseType::DomainType;
   using typename BaseType::RangeType;
   using typename BaseType::JacobianRangeType;
+  using BaseType::dimDomain;
 
   Edges05PdelabWrapper(const PdelabSpaceType& space, const EntityType& ent)
     : BaseType(ent)
@@ -419,7 +419,7 @@ public:
     assert(backend_);
     assert(ret.size() >= backend_->size());
     backend_->evaluateFunction(xx, ret);
-    //evaluateFunction for edges05 already gives the value on the lement and not in the reference configuration, so no mapping here
+    //evaluateFunction for edges05 already gives the value on the element and not in the reference configuration, so no mapping here
     /*assert(lfs_);
     assert(backend_);
     assert(tmp_ranges_.size() >= backend_->size());
@@ -459,11 +459,11 @@ public:
 
 private:
   mutable DomainType tmp_domain_;
-  mutable typename EntityType::Geometry::JacobianTransposed tmp_jacobian_transposed_;
+  mutable typename EntityType::Geometry::JacobianTransposed        tmp_jacobian_transposed_;
   mutable typename EntityType::Geometry::JacobianInverseTransposed tmp_jacobian_inverse_transposed_;
   std::unique_ptr< const PdelabLFSType > lfs_;
-  std::unique_ptr< const BackendType > backend_;
-  mutable std::vector< RangeType > tmp_ranges_;
+  std::unique_ptr< const BackendType >   backend_;
+  mutable std::vector< RangeType >         tmp_ranges_;
   mutable std::vector< JacobianRangeType > tmp_jacobian_ranges_;
 }; // class Edges05PdelabWrapper
 

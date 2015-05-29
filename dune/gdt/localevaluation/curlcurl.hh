@@ -37,8 +37,8 @@ class CurlCurlTraits
   static_assert(Stuff::is_localizable_function< ParamFunctionType >::value,
                 "ParamFunctionType has to be a localizable function!");
 public:
-  typedef CurlCurl< ParamFunctionType > derived_type;
-  typedef typename ParamFunctionType::EntityType EntityType;
+  typedef CurlCurl< ParamFunctionType >               derived_type;
+  typedef typename ParamFunctionType::EntityType      EntityType;
   typedef typename ParamFunctionType::DomainFieldType DomainFieldType;
   typedef std::tuple< std::shared_ptr< typename ParamFunctionType::LocalfunctionType > > LocalfunctionTupleType;
   static const size_t dimDomain = ParamFunctionType::dimDomain;
@@ -56,12 +56,12 @@ class CurlCurl
   : public LocalEvaluation::Codim0Interface< internal::CurlCurlTraits< ParamFunctionImp >, 2 >
 {
 public:
-  typedef ParamFunctionImp ParamType;
+  typedef ParamFunctionImp                             ParamType;
   typedef internal::CurlCurlTraits< ParamFunctionImp > Traits;
-  typedef typename Traits::LocalfunctionTupleType LocalfunctionTupleType;
-  typedef typename Traits::EntityType EntityType;
-  typedef typename Traits::DomainFieldType DomainFieldType;
-  static const size_t dimDomain = Traits::dimDomain;
+  typedef typename Traits::LocalfunctionTupleType      LocalfunctionTupleType;
+  typedef typename Traits::EntityType                  EntityType;
+  typedef typename Traits::DomainFieldType             DomainFieldType;
+  static const size_t                                  dimDomain = Traits::dimDomain;
 
   explicit CurlCurl(const ParamType& permeab)
     : mu_(permeab)
@@ -155,12 +155,12 @@ public:
     assert(ret.rows()>= rows);
     assert(ret.cols() >= cols);
     for (size_t ii =0; ii<rows; ++ii) {
-          auto& retRow = ret[ii];
-        for(size_t jj = 0; jj < cols; ++jj) {
-              retRow[jj] = functionValue *(((tGrad[ii][2][1]-tGrad[ii][1][2])*(aGrad[jj][2][1]-aGrad[jj][1][2]))
-                                           + ((tGrad[ii][0][2]-tGrad[ii][2][0])*(aGrad[jj][0][2]-aGrad[jj][2][0]))
-                                           + ((tGrad[ii][1][0]-tGrad[ii][0][1])*(aGrad[jj][1][0]-aGrad[jj][0][1])));
-        }
+      auto& retRow = ret[ii];
+      for(size_t jj = 0; jj < cols; ++jj) {
+        retRow[jj] = functionValue *(((tGrad[ii][2][1]-tGrad[ii][1][2])*(aGrad[jj][2][1]-aGrad[jj][1][2]))
+                                     + ((tGrad[ii][0][2]-tGrad[ii][2][0])*(aGrad[jj][0][2]-aGrad[jj][2][0]))
+                                     + ((tGrad[ii][1][0]-tGrad[ii][0][1])*(aGrad[jj][1][0]-aGrad[jj][0][1])));
+      }
     }
   } // ... evaluate (...)
 
@@ -170,7 +170,7 @@ private:
 
 
 
-}  //namespace LocalEvaluation
+} //namespace LocalEvaluation
 } //namespace GDT
 } //namespace Dune
 

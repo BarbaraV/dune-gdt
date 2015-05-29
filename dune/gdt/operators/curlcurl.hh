@@ -51,21 +51,20 @@ class CurlCurlTraits
   static_assert(is_space< RangeSpaceImp >::value, "RangeSpaceImp has to be derived from SpaceInterface!");
 public:
   typedef CurlCurl< FunctionType, MatrixImp, SourceSpaceImp, RangeSpaceImp, GridViewImp >
-        derived_type;
-  typedef MatrixImp MatrixType;
+          derived_type;
+  typedef MatrixImp      MatrixType;
   typedef SourceSpaceImp SourceSpaceType;
-  typedef RangeSpaceImp RangeSpaceType;
-  typedef GridViewImp GridViewType;
+  typedef RangeSpaceImp  RangeSpaceType;
+  typedef GridViewImp    GridViewType;
 }; //class CurlCurlTraits
 
 } //namespace internal
 
 
 /** \brief Implements a (global) curlcurl operator
- * \note only implemented for scalar parameter functions at the moment, matrix-valued not sure whether they are supported
+ * \note only scalar parameters are supported for sure
  *
- * \tparam MuFunctionType Type of the parameter function in the curlcurl part
- * \tparam KappaFunctionType Type of the parameter function in the identity part
+ * \tparam FunctionType Type of the parameter function
  * \tparam MatrixImp Type for the system matrix everything is assmebled in
  * \tparam SourceSpaceImp Type of the ansatz space
  * \tparam RangeSpaceImp Type of the test space
@@ -79,12 +78,12 @@ class CurlCurl
                                                              SourceSpaceImp, RangeSpaceImp, GridViewImp > >
   , public SystemAssembler< RangeSpaceImp, GridViewImp, SourceSpaceImp >
 {
-  typedef Stuff::Common::StorageProvider< MatrixImp >  StorageProvider;
+  typedef Stuff::Common::StorageProvider< MatrixImp >                                        StorageProvider;
   typedef SystemAssembler< RangeSpaceImp, GridViewImp, SourceSpaceImp >                      AssemblerBaseType;
-  typedef Operators::MatrixBased< internal::CurlCurlTraits< FunctionType, MatrixImp, SourceSpaceImp
-                                                              , RangeSpaceImp, GridViewImp > > OperatorBaseType;
-  typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< FunctionType > >        LocalCurlOperatorType;
-  typedef LocalAssembler::Codim0Matrix< LocalCurlOperatorType >                                  LocalCurlAssemblerType;
+  typedef Operators::MatrixBased< internal::CurlCurlTraits< FunctionType, MatrixImp, SourceSpaceImp,
+                                                            RangeSpaceImp, GridViewImp > >   OperatorBaseType;
+  typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< FunctionType > >         LocalCurlOperatorType;
+  typedef LocalAssembler::Codim0Matrix< LocalCurlOperatorType >                              LocalCurlAssemblerType;
   public:
     typedef internal::CurlCurlTraits< FunctionType, MatrixImp, SourceSpaceImp, RangeSpaceImp, GridViewImp>
         Traits;
@@ -108,92 +107,92 @@ class CurlCurl
            const SourceSpaceType& src_space,
            const RangeSpaceType& rng_space,
            const GridViewType& grid_view)
-      : StorageProvider(mtrx)
-      , OperatorBaseType(this->storage_access(), src_space, rng_space, grid_view)
-      , AssemblerBaseType(rng_space, grid_view, src_space)
-      , mu_(mu)
-      , local_curl_operator_(mu_)
-      , local_curl_assembler_(local_curl_operator_)
-      , assembled_(false)
-    {
-       setup();
-    }
+    : StorageProvider(mtrx)
+    , OperatorBaseType(this->storage_access(), src_space, rng_space, grid_view)
+    , AssemblerBaseType(rng_space, grid_view, src_space)
+    , mu_(mu)
+    , local_curl_operator_(mu_)
+    , local_curl_assembler_(local_curl_operator_)
+    , assembled_(false)
+  {
+    setup();
+  }
 
   CurlCurl(const FunctionType& mu,
            const SourceSpaceType& src_space,
            const RangeSpaceType& rng_space,
            const GridViewType& grid_view)
-      : StorageProvider(new MatrixType(rng_space.mapper().size(),
-                                       src_space.mapper().size(),
-                                       pattern(rng_space, src_space, grid_view)))
-      , OperatorBaseType(this->storage_access(), src_space, rng_space, grid_view)
-      , AssemblerBaseType(rng_space, grid_view, src_space)
-      , mu_(mu)
-      , local_curl_operator_(mu_)
-      , local_curl_assembler_(local_curl_operator_)
-      , assembled_(false)
-    {
-       setup();
-    }
+    : StorageProvider(new MatrixType(rng_space.mapper().size(),
+                                     src_space.mapper().size(),
+                                     pattern(rng_space, src_space, grid_view)))
+    , OperatorBaseType(this->storage_access(), src_space, rng_space, grid_view)
+    , AssemblerBaseType(rng_space, grid_view, src_space)
+    , mu_(mu)
+    , local_curl_operator_(mu_)
+    , local_curl_assembler_(local_curl_operator_)
+    , assembled_(false)
+  {
+    setup();
+  }
 
   CurlCurl(const FunctionType& mu,
            MatrixType& mtrx,
            const SourceSpaceType& src_space,
            const RangeSpaceType& rng_space)
-      : StorageProvider(mtrx)
-      , OperatorBaseType(this->storage_access(), src_space, rng_space)
-      , AssemblerBaseType(rng_space, src_space)
-      , mu_(mu)
-      , local_curl_operator_(mu_)
-      , local_curl_assembler_(local_curl_operator_)
-      , assembled_(false)
-    {
-       setup();
-    }
+    : StorageProvider(mtrx)
+    , OperatorBaseType(this->storage_access(), src_space, rng_space)
+    , AssemblerBaseType(rng_space, src_space)
+    , mu_(mu)
+    , local_curl_operator_(mu_)
+    , local_curl_assembler_(local_curl_operator_)
+    , assembled_(false)
+  {
+    setup();
+  }
 
   CurlCurl(const FunctionType& mu,
            const SourceSpaceType& src_space,
            const RangeSpaceType& rng_space)
-      : StorageProvider(new MatrixType(rng_space.mapper().size(),
-                                       src_space.mapper().size(),
-                                       pattern(rng_space, src_space)))
-      , OperatorBaseType(this->storage_access(), src_space, rng_space)
-      , AssemblerBaseType(rng_space, src_space)
-      , mu_(mu)
-      , local_curl_operator_(mu_)
-      , local_curl_assembler_(local_curl_operator_)
-      , assembled_(false)
-    {
-       setup();
-    }
+    : StorageProvider(new MatrixType(rng_space.mapper().size(),
+                                     src_space.mapper().size(),
+                                     pattern(rng_space, src_space)))
+    , OperatorBaseType(this->storage_access(), src_space, rng_space)
+    , AssemblerBaseType(rng_space, src_space)
+    , mu_(mu)
+    , local_curl_operator_(mu_)
+    , local_curl_assembler_(local_curl_operator_)
+    , assembled_(false)
+  {
+    setup();
+  }
 
   CurlCurl(const FunctionType& mu,
            MatrixType& mtrx,
            const SourceSpaceType& src_space)
-      : StorageProvider(mtrx)
-      , OperatorBaseType(this->storage_access(), src_space)
-      , AssemblerBaseType(src_space)
-      , mu_(mu)
-      , local_curl_operator_(mu_)
-      , local_curl_assembler_(local_curl_operator_)
-      , assembled_(false)
-    {
-      setup();
-    }
+    : StorageProvider(mtrx)
+    , OperatorBaseType(this->storage_access(), src_space)
+    , AssemblerBaseType(src_space)
+    , mu_(mu)
+    , local_curl_operator_(mu_)
+    , local_curl_assembler_(local_curl_operator_)
+    , assembled_(false)
+  {
+    setup();
+  }
 
   CurlCurl(const FunctionType& mu,
            const SourceSpaceType& src_space)
-      : StorageProvider(new MatrixType(src_space.mapper().size(), src_space.mapper().size(),
-                                       pattern(src_space)))
-      , OperatorBaseType(this->storage_access(), src_space)
-      , AssemblerBaseType(src_space)
-      , mu_(mu)
-      , local_curl_operator_(mu_)
-      , local_curl_assembler_(local_curl_operator_)
-      , assembled_(false)
-    {
-       setup();
-    }
+    : StorageProvider(new MatrixType(src_space.mapper().size(), src_space.mapper().size(),
+                                     pattern(src_space)))
+    , OperatorBaseType(this->storage_access(), src_space)
+    , AssemblerBaseType(src_space)
+    , mu_(mu)
+    , local_curl_operator_(mu_)
+    , local_curl_assembler_(local_curl_operator_)
+    , assembled_(false)
+  {
+    setup();
+  }
 
   virtual ~CurlCurl() {}
 

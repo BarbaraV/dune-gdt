@@ -20,7 +20,7 @@ template< class ImpTraits, size_t domainDim, size_t rangeDim, size_t rangeDimCol
 class NedelecInterface
   :public SpaceInterface< ImpTraits, domainDim, rangeDim, rangeDimCols >
 {
-  typedef SpaceInterface< ImpTraits, domainDim, rangeDim, rangeDimCols > BaseType;
+  typedef SpaceInterface< ImpTraits, domainDim, rangeDim, rangeDimCols >   BaseType;
   typedef NedelecInterface< ImpTraits, domainDim, rangeDim, rangeDimCols > ThisType;
 public:
   typedef ImpTraits Traits;
@@ -36,7 +36,7 @@ public:
   using typename BaseType::BaseFunctionSetType;
   using typename BaseType::PatternType;
 private:
-  static const constexpr RangeFieldType compare_tolerance_ =1e-13;
+  static const constexpr RangeFieldType compare_tolerance_ = 1e-13;
 public:
 
   /**
@@ -58,17 +58,6 @@ public:
    * @{
    */
 
-/*  std::vector< size_t > local_DoF_indices_3dsimplex_order1(const EntityType& entity) const
-  {
-    static_assert(dimDomain == 3, "Not implemented");
-    static_assert(polOrder == 1, "Not implemented");
-    const auto num_edges = boost::numeric_cast< size_t >(entity.template count< 2 >());    // ergibt das die Zahl der codim2 entities?
-    std::vector< size_t > local_DoF_index_of_edge(num_edges, std::numeric_limits< size_t >::infinity());
-    //do something intelligent
-    return local_DoF_index_of_edge;
-  } //...local_DoF_indices_3dsimplex_order0(...)                                            //as in RTInterface
-*/
-
 
   /**
    * @brief local_dirichlet_DoFs_order1 computes the local degrees of freedom on the dirichlet boundary for polynomial order 1
@@ -77,7 +66,7 @@ public:
    * @return a set of local indices which lie on the Dirichlet boundary
    */
   std::set< size_t > local_dirichlet_DoFs_order_1(const EntityType& entity,
-                                                 const BoundaryInfoType& boundaryInfo) const
+                                                  const BoundaryInfoType& boundaryInfo) const
   {
     static_assert(polOrder == 1, "Not tested for higher polynomial orders!");
     static_assert(dimDomain == 3, "Not implemented!");
@@ -96,56 +85,56 @@ public:
     for (auto intersection_it = this->grid_view().ibegin(entity);
            intersection_it != intersection_it_end;
            ++intersection_it) {
-        //only work in dirichlet intersections
-        const auto& intersection = *intersection_it;
-        //actual dirichlet intersections+process bdries for parallel run
-        if (boundaryInfo.dirichlet(intersection) || (!intersection.neighbor() && !intersection.boundary())) {
-            const auto geometry = intersection.geometry();
-            //check which vertices lie on the intersection
-            for (size_t vv = 0; vv < num_vertices; ++vv) {
-                const auto vertex_ptr = entity.template subEntity< dimDomain >(boost::numeric_cast< int >(vv));
-                const auto& vertex = *vertex_ptr;
-                for (auto cc : DSC::valueRange(geometry.corners())) {
-                    corner = geometry.corner(boost::numeric_cast< int >(cc));
-                    if (Stuff::Common::FloatCmp::eq(vertex.geometry().center(), corner))
-                        liesonintersection[vv] = true;
-                } //loop over all corners of the intersection
-            } //loop over all vertices
-            //now get the vertex opposite to the intersection (i.e. the one which does not lie on it)
-            size_t found = 0;
-            size_t missed = 0;
-            for (size_t vvv = 0; vvv < num_vertices; ++vvv) {
-                if (!(liesonintersection[vvv])) {
-                    vertexoppDirirchlet.emplace_back(reference_element.position(vvv, dimDomain));
-                    ++found;
-                } else
-                    ++missed;
-                //clear for next intersection
-                liesonintersection[vvv] = false;
-            } //loop over all vertices
-            //assert only one opposite vertex was found
-            assert(found == 1 && missed == dimDomain && "This must not happen for tetrahedral meshes!");
-        } //only work on dirichlet intersections
+      //only work in dirichlet intersections
+      const auto& intersection = *intersection_it;
+      //actual dirichlet intersections+process bdries for parallel run
+      if (boundaryInfo.dirichlet(intersection) || (!intersection.neighbor() && !intersection.boundary())) {
+        const auto geometry = intersection.geometry();
+        //check which vertices lie on the intersection
+        for (size_t vv = 0; vv < num_vertices; ++vv) {
+          const auto vertex_ptr = entity.template subEntity< dimDomain >(boost::numeric_cast< int >(vv));
+          const auto& vertex = *vertex_ptr;
+          for (auto cc : DSC::valueRange(geometry.corners())) {
+            corner = geometry.corner(boost::numeric_cast< int >(cc));
+            if (Stuff::Common::FloatCmp::eq(vertex.geometry().center(), corner))
+              liesonintersection[vv] = true;
+          } //loop over all corners of the intersection
+        } //loop over all vertices
+        //now get the vertex opposite to the intersection (i.e. the one which does not lie on it)
+        size_t found = 0;
+        size_t missed = 0;
+        for (size_t vvv = 0; vvv < num_vertices; ++vvv) {
+          if (!(liesonintersection[vvv])) {
+            vertexoppDirirchlet.emplace_back(reference_element.position(vvv, dimDomain));
+            ++found;
+          } else
+            ++missed;
+            //clear for next intersection
+            liesonintersection[vvv] = false;
+        } //loop over all vertices
+        //assert only one opposite vertex was found
+        assert(found == 1 && missed == dimDomain && "This must not happen for tetrahedral meshes!");
+      } //only work on dirichlet intersections
     } //loop over all intersections
     // get all the basefunctions which evaluate to 0 there
-    //(must be exactly dimDomain for polOrder 1!), these are added to localdirichletdofs
+    //(must be exactly dimDomain for polOrder 1), these are added to localdirichletdofs
     const auto basis = this->base_function_set(entity);
     typedef typename BaseType::BaseFunctionSetType::RangeType RangeType;
     std::vector< RangeType > tmp_basis_values(basis.size(), RangeType(0));
     for (size_t cc = 0; cc < vertexoppDirirchlet.size(); ++cc) {
-        basis.evaluate(vertexoppDirirchlet[cc], tmp_basis_values);
-        size_t zeros = 0;
-        size_t nonzeros = 0;
-        for (size_t ii = 0; ii < basis.size(); ++ii) {
-            if (tmp_basis_values[ii].two_norm() < compare_tolerance_) {
-                localDirichletDoFs.insert(ii);
-                ++zeros;
-            } else
-                ++nonzeros;
-        }
-        assert(zeros == dimDomain && "This must not happen for polynomial order 1!");
+      basis.evaluate(vertexoppDirirchlet[cc], tmp_basis_values);
+      size_t zeros = 0;
+      size_t nonzeros = 0;
+      for (size_t ii = 0; ii < basis.size(); ++ii) {
+        if (tmp_basis_values[ii].two_norm() < compare_tolerance_) {
+          localDirichletDoFs.insert(ii);
+          ++zeros;
+        } else
+          ++nonzeros;
+      }
+      assert(zeros == dimDomain && "This must not happen for polynomial order 1!");
     }
-   return localDirichletDoFs;
+    return localDirichletDoFs;
   } //... local_dirichlet_DoFs_order0(...)
 
   using BaseType::compute_pattern;
@@ -156,7 +145,7 @@ public:
     DSC::TimedLogger().get("gdt.spaces.nedelec.pdelab.compute_pattern").warn() << "Returning largest possible pattern!"
                                                                             << std::endl;
     return BaseType::compute_face_and_volume_pattern(local_grid_view, ansatz_space);
-  }                                                                         //as in RTInterface
+  }
 
   using BaseType::local_constraints;
   template< class S, size_t d, size_t r, size_t rC, class ConstraintsType >
@@ -178,10 +167,10 @@ public:
     if (local_DoFs.size() > 0) {
       const auto global_indices = this->mapper().globalIndices(entity);
       for (const auto& localDoF : local_DoFs) {
-          ret.insert(global_indices[localDoF]);
+        ret.insert(global_indices[localDoF]);
       }
     }
-  } //... local_constraints(..., Constraints::Dirichlet<...>....)   //as in CGInterface
+  } //... local_constraints(..., Constraints::Dirichlet<...>....)
 
   /** @} */
 
