@@ -51,10 +51,8 @@
  */
 
 template< class GridViewType,
-          int polynomialOrder//,
-          /*class MatrixImp = Dune::Stuff::LA::Container< double >::MatrixType,
-          class VectorImp = Dune::Stuff::LA::Container< double >::VectorType*/ >
-class DiscretizationReal{
+          int polynomialOrder >
+class Discretization{
 public:
     static const size_t dimDomain = GridViewType::dimension;
     typedef typename GridViewType::ctype DomainFieldType;
@@ -79,7 +77,7 @@ public:
     typedef Dune::GDT::ConstDiscreteFunction < SpaceType, VectorType > ConstDiscreteFunctionType;
 
 
-    DiscretizationReal(const GridViewType& gp,
+    Discretization(const GridViewType& gp,
                        const BoundaryInfoType& info,
                        const ScalarFct& mu,
                        const ScalarFct& kappareal,
@@ -222,7 +220,7 @@ private:
     mutable VectorType rhs_vector_real_;
     mutable VectorType rhs_vector_imag_;
     mutable VectorTypeComplex rhs_vector_total_;
-}; //class discretizationreal
+}; //class discretization
 
 
 
