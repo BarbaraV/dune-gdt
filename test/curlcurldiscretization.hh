@@ -35,151 +35,6 @@
 
 
 
-/** \brief Class to discretize curl-curl problems
- *
- * Problems of the form curl(mu curl E)+kappa E= f are solved, which admit a unique solution if the complex parameter kappa has positive imaginary part.
- * The discretization uses Nedelec spaces of the first family in lowest order on simplicial grids. The functions and parameters can be complex-valued.
- * The parameters mu and kappa have to be computed out of the material parameters permability, permittivity and conductivity by the user.
- * Note that mu in most cases will be the inverse (!) permability.
- * \note As boundary conditions, only a homogenous Dirchlet condition is supported at the moment.
- *
- * \tparam GridViewType  Type of grid
- * \tparam polynomialOrder Polynomial order of the function space to be used, only polynomialOrder=1 is possible at the moment
- * \tparam MatrixImp Type of the system matrix
- * \tparam VectorImp Type of the vectors for the right hand side and the solution
- */
-
-template< class GridViewType,
-          int polynomialOrder,
-          class MatrixImp = Dune::Stuff::LA::Container< std::complex< double > >::MatrixType,  //Matrix-interface atm inable to handle complex!
-          class VectorImp = Dune::Stuff::LA::Container< std::complex< double > >::VectorType >
-class Discretization{
-public:
-    static const size_t dimDomain = GridViewType::dimension;
-    typedef typename GridViewType::ctype DomainFieldType;
-    static const size_t dimRange = dimDomain;
-    static const unsigned int polOrder = polynomialOrder;
-
-    typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename GridViewType::Intersection > BoundaryInfoType;
-    typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, std::complex< double >, dimRange > ComplexVectorfct;
-    typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, 1 > RealScalarFct;
-    typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, std::complex< double >, 1 > ComplexScalarFct;
-
-    typedef MatrixImp MatrixType;
-    typedef VectorImp VectorType;
-
-    typedef Dune::GDT::Spaces::Nedelec::PdelabBased< GridViewType, polOrder, double, dimRange > SpaceType;
-
-    typedef Dune::GDT::DiscreteFunction< SpaceType, VectorType > DiscreteFunctionType;
-    typedef Dune::GDT::ConstDiscreteFunction < SpaceType, VectorType > ConstDiscreteFunctionType;
-
-
-    Discretization(const GridViewType& gp,
-                   const BoundaryInfoType& info,
-                   const RealScalarFct& mu,
-                   const ComplexScalarFct& kappa,
-                   const ComplexVectorfct& src)
-        : space_(gp)
-        , boundary_info_(info)
-        , mu_(mu)
-        , kappa_(kappa)
-        , sourceterm_(src)
-        , is_assembled_(false)
-        , system_matrix_(0,0)
-        , rhs_vector_(0)
-    {}
-
-    const SpaceType& space() const
-    {
-        return space_;
-    }
-
-    VectorType create_vector() const
-    {
-        return VectorType(space_.mapper().size());
-    }
-
-    void assemble() const
-    {
-      using namespace Dune;
-      using namespace Dune::GDT;
-      if (!is_assembled_) {
-        //prepare
-        Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_face_and_volume_pattern();
-        system_matrix_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
-        rhs_vector_ = VectorType(space_.mapper().size());
-        SystemAssembler< SpaceType > grid_walker(space_);
-
-        //rhs
-        /*typedef GDT::Functionals::L2Volume< ComplexVectorfct, VectorType, SpaceType > L2FunctionalType;
-        L2FunctionalType source_functional(sourceterm_, rhs_vector_, space_);
-        grid_walker.add(source_functional);*/
-        auto source_functional = Dune::GDT::Functionals::make_l2_volume(sourceterm_, rhs_vector_, space_);
-        grid_walker.add(*source_functional);
-
-        //lhs
-        typedef GDT::Operators::CurlCurl< RealScalarFct, MatrixType, SpaceType > CurlOperatorType;
-        CurlOperatorType curlcurl_operator(mu_, system_matrix_, space_);
-        grid_walker.add(curlcurl_operator);
-        typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< ComplexScalarFct > > IdOperatorType;
-        const IdOperatorType identity_operator(kappa_);
-        const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler(identity_operator);
-        grid_walker.add(idMatrixAssembler, system_matrix_);
-
-        //for non-homogeneous dirichlet boundary values you have to implement an appropriate DirichletProjection!
-        //afterwards, the same procedure as in elliptic-cg-discretization can be used
-
-
-        //apply the dirichlet constraints, atm only for homogenous dirichlet constraints!
-        Spaces::DirichletConstraints< typename GridViewType::Intersection >
-                dirichlet_constraints(boundary_info_, space_.mapper().maxNumDofs());
-        grid_walker.add(dirichlet_constraints);
-        grid_walker.assemble();
-        dirichlet_constraints.apply(system_matrix_, rhs_vector_);
-        is_assembled_ = true;
-      }
-    } //assemble()
-
-
-    bool assembled() const
-    {
-        return is_assembled_;
-    }
-
-
-    const MatrixType& system_matrix() const
-    {
-        return system_matrix_;
-    }
-
-
-    const VectorType& rhs_vector() const
-    {
-        return rhs_vector_;
-    }
-
-    void solve(VectorType& solution) const
-    {
-      if(!is_assembled_)
-          assemble();
-
-      //solve
-      Dune::Stuff::LA::Solver< MatrixType >(system_matrix_).apply(rhs_vector_, solution);
-    } //solve()
-
-
-private:
-    const SpaceType space_;
-    const BoundaryInfoType& boundary_info_;
-    const RealScalarFct& mu_;
-    const ComplexScalarFct& kappa_;
-    const ComplexVectorfct& sourceterm_;
-    mutable bool is_assembled_;
-    mutable MatrixType system_matrix_;
-    mutable VectorType rhs_vector_;
-}; //class discretization
-
-
 
 /** \brief Class to discretize curl-curl problems only using real matrices
  *
@@ -196,9 +51,9 @@ private:
  */
 
 template< class GridViewType,
-          int polynomialOrder,
-          class MatrixImp = Dune::Stuff::LA::Container< double >::MatrixType,
-          class VectorImp = Dune::Stuff::LA::Container< double >::VectorType >
+          int polynomialOrder//,
+          /*class MatrixImp = Dune::Stuff::LA::Container< double >::MatrixType,
+          class VectorImp = Dune::Stuff::LA::Container< double >::VectorType*/ >
 class DiscretizationReal{
 public:
     static const size_t dimDomain = GridViewType::dimension;
@@ -210,8 +65,13 @@ public:
     typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, dimRange > Vectorfct;
     typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, 1 > ScalarFct;
 
-    typedef MatrixImp MatrixType;
-    typedef VectorImp VectorType;
+    /*typedef MatrixImp MatrixType;
+    typedef VectorImp VectorType;*/
+
+    typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType MatrixType;
+    typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType VectorType;
+    typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType MatrixTypeComplex;
+    typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType VectorTypeComplex;
 
     typedef Dune::GDT::Spaces::Nedelec::PdelabBased< GridViewType, polOrder, double, dimRange > SpaceType;
 
@@ -261,10 +121,12 @@ public:
         Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_face_and_volume_pattern();
         system_matrix_real_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
         system_matrix_imag_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
-        system_matrix_total_ = MatrixType(2*space_.mapper().size(), 2*space_.mapper().size());
+        //system_matrix_total_ = MatrixType(2*space_.mapper().size(), 2*space_.mapper().size());
+        system_matrix_total_ = MatrixTypeComplex(space_.mapper().size(), space_.mapper().size());
         rhs_vector_real_ = VectorType(space_.mapper().size());
         rhs_vector_imag_ = VectorType(space_.mapper().size());
-        rhs_vector_total_ = VectorType(2*space_.mapper().size());
+        //rhs_vector_total_ = VectorType(2*space_.mapper().size());
+        rhs_vector_total_ = VectorTypeComplex(space_.mapper().size());
         SystemAssembler< SpaceType > grid_walker(space_);
 
         //rhs
@@ -300,7 +162,13 @@ public:
         dirichlet_constraints.apply(system_matrix_imag_, rhs_vector_imag_);
 
         // total (block) matrix and (block) vector have to be assembled
-        //system_matrix_total_.backend().topLeftCorner(space_.mapper().size(), space_.mapper().size()) = system_matrix_real_.backend().topLeftCorner(space_.mapper().size(), space_.mapper().size());
+        std::complex< double > im(0.0, 1.0);
+        system_matrix_total_.backend() = system_matrix_imag_.backend().template cast<std::complex< double > >();
+        system_matrix_total_.scal(im);
+        system_matrix_total_.backend() += system_matrix_real_.backend().template cast< std::complex< double > >();
+        rhs_vector_total_.backend() = rhs_vector_imag_.backend().template cast<std::complex< double > >();
+        rhs_vector_total_.scal(im);
+        rhs_vector_total_.backend() += rhs_vector_real_.backend().template cast< std::complex< double > >();
 
         is_assembled_ = true;
       }
@@ -313,24 +181,29 @@ public:
     }
 
 
-    const MatrixType& system_matrix() const
+    const MatrixTypeComplex& system_matrix() const
     {
         return system_matrix_total_;
     }
 
 
-    const VectorType& rhs_vector() const
+    const VectorTypeComplex& rhs_vector() const
     {
         return rhs_vector_total_;
     }
 
-    void solve(VectorType& solution) const
+    void solve(VectorTypeComplex& solution) const
     {
       if(!is_assembled_)
           assemble();
 
+      // instantiate solver and options
+      typedef Dune::Stuff::LA::Solver< MatrixTypeComplex > SolverType;
+      SolverType solver(system_matrix_total_);
+      Dune::Stuff::Common::Configuration options = SolverType::options();
+      options.set("check_for_inf_nan", "0", true);
       //solve
-      Dune::Stuff::LA::Solver< MatrixType >(system_matrix_total_).apply(rhs_vector_total_, solution);
+      solver.apply(rhs_vector_total_, solution, options);
     } //solve()
 
 
@@ -345,10 +218,10 @@ private:
     mutable bool is_assembled_;
     mutable MatrixType system_matrix_real_;
     mutable MatrixType system_matrix_imag_;
-    mutable MatrixType system_matrix_total_;
+    mutable MatrixTypeComplex system_matrix_total_;
     mutable VectorType rhs_vector_real_;
     mutable VectorType rhs_vector_imag_;
-    mutable VectorType rhs_vector_total_;
+    mutable VectorTypeComplex rhs_vector_total_;
 }; //class discretizationreal
 
 
