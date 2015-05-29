@@ -194,7 +194,7 @@ public:
     typedef Dune::Stuff::LA::Solver< MatrixTypeComplex > SolverType;
     SolverType solver(system_matrix_total_);
     //solve
-    solver.apply(rhs_vector_total_, solution, options);
+    solver.apply(rhs_vector_total_, solution);
   } //solve()
 
 
