@@ -197,6 +197,18 @@ public:
     solver.apply(rhs_vector_total_, solution);
   } //solve()
 
+  void visualize(const VectorTypeComplex& vector, const std::string filename, const std::string name) const
+  {
+    VectorType realvector(vector.size());
+    VectorType imagvector(vector.size());
+    realvector.backend() = vector.backend().real();
+    imagvector.backend() = vector.backend().imag();
+    ConstDiscreteFunctionType functionreal(space_, realvector, name+"real");
+    ConstDiscreteFunctionType functionimag(space_, imagvector, name+"imag");
+    functionreal.visualize(filename+"real");
+    functionimag.visualize(filename+"imag");
+  }
+
 
 private:
   const SpaceType           space_;
