@@ -1,0 +1,4 @@
+#ifndef SHIFTEDEVAL_HH
+#define SHIFTEDEVAL_HH
+
+#endif // SHIFTEDEVAL_HH
