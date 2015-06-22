@@ -22,6 +22,7 @@
 # include <dune/pdelab/finiteelementmap/pkfem.hh>
 # include <dune/pdelab/finiteelementmap/qkfem.hh>
 # include <dune/pdelab/gridfunctionspace/gridfunctionspace.hh>
+# include <dune/pdelab/gridfunctionspace/vectorgridfunctionspace.hh>
 # include <dune/pdelab/constraints/conforming.hh>
 #endif // HAVE_DUNE_PDELAB
 
@@ -89,12 +90,35 @@ private:
                               == GenericGeometry::CubeTopology< dimDomain >::type::id);
   typedef typename FeMap< GridType, single_geom_, simplicial_, cubic_ >::Type FEMapType;
 public:
-  typedef PDELab::GridFunctionSpace< GridViewType, FEMapType, PDELab::OverlappingConformingDirichletConstraints > BackendType;
-  typedef Mapper::ContinuousPdelabWrapper< BackendType > MapperType;
+  template< class G, size_t dimRange >
+  struct BackendMapper
+  {
+    typedef PDELab::VectorGridFunctionSpace< GridViewType, FEMapType, dimRange, PDELab::ISTLVectorBackend<>,
+                                             PDELab::ISTLVectorBackend<>, PDELab::OverlappingConformingDirichletConstraints > Type;
+    typedef Mapper::ContinuousPowerPdelabWrapper< Type > MapType;
+  };
+  template< class G >
+  struct BackendMapper< G, 1 >
+  {
+    typedef PDELab::GridFunctionSpace< GridViewType, FEMapType, PDELab::OverlappingConformingDirichletConstraints > Type;
+    typedef Mapper::ContinuousPdelabWrapper< Type > MapType;
+  };
+  typedef typename BackendMapper< GridType, rangeDim >::Type BackendType;
+  typedef typename BackendMapper< GridType, rangeDim >::MapType MapperType;
   typedef typename GridViewType::template Codim< 0 >::Entity EntityType;
-  typedef BaseFunctionSet::PdelabWrapper
-      < BackendType, EntityType, DomainFieldType, dimDomain, RangeFieldType, rangeDim, rangeDimCols >
-    BaseFunctionSetType;
+ /* template< class G, size_t dimRange >
+  struct BasefunctionSet
+  {
+    typedef BaseFunctionSet::PdelabWrapper< PDELab::GridFunctionSpace< GridViewType, FEMapType, PDELab::OverlappingConformingDirichletConstraints >,
+                                            EntityType, DomainFieldType, dimDomain, RangeFieldType, dimRange, rangeDimCols > Type;
+  };
+  template< class G >
+  struct BasefunctionSet< G, 1 >
+  {
+    typedef BaseFunctionSet::PdelabWrapper< BackendType, EntityType, DomainFieldType, dimDomain, RangeFieldType, 1, rangeDimCols > Type;
+  };
+  typedef typename BasefunctionSet< GridType, rangeDim >::Type BaseFunctionSetType;*/
+  typedef BaseFunctionSet::PdelabWrapper< BackendType, EntityType, DomainFieldType, dimDomain, RangeFieldType, rangeDim, rangeDimCols > BaseFunctionSetType;
   static const Stuff::Grid::ChoosePartView part_view_type = Stuff::Grid::ChoosePartView::view;
   static const bool needs_grid_view = true;
 
@@ -231,6 +255,137 @@ private:
   mutable bool communicator_prepared_;
   mutable std::mutex communicator_mutex_;
 }; // class PdelabBased< ..., 1 >
+
+
+template< class GridViewImp, int polynomialOrder, class RangeFieldImp, size_t rangeDim >
+class PdelabBased< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 >
+  : public Spaces::CGInterface< PdelabBasedTraits< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 >,
+                                GridViewImp::dimension, rangeDim, 1 >
+{
+  typedef Spaces::CGInterface< PdelabBasedTraits< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 >,
+                               GridViewImp::dimension, rangeDim, 1 >              BaseType;
+  typedef Spaces::CGInterface< PdelabBasedTraits< GridViewImp, polynomialOrder, RangeFieldImp, 1, 1 >,
+                               GridViewImp::dimension, 1, 1 >                     ScalarBaseType;
+  typedef PdelabBased< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 > ThisType;
+public:
+  typedef PdelabBasedTraits< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 > Traits;
+
+  static const int    polOrder = Traits::polOrder;
+  static const size_t dimDomain = BaseType::dimDomain;
+  static const size_t dimRange = BaseType::dimRange;
+  static const size_t dimRangeCols = BaseType::dimRangeCols;
+
+  typedef typename Traits::GridViewType         GridViewType;
+  typedef typename Traits::RangeFieldType       RangeFieldType;
+  typedef typename Traits::BackendType          BackendType;
+  typedef typename Traits::MapperType           MapperType;
+  typedef typename Traits::BaseFunctionSetType  BaseFunctionSetType;
+
+  typedef typename GridViewType::ctype              DomainFieldType;
+  typedef FieldVector< DomainFieldType, dimDomain > DomainType;
+  typedef CommunicationChooser< GridViewType >      CommunicationChooserType;
+  typedef typename CommunicationChooserType::Type   CommunicatorType;
+
+private:
+  typedef typename Traits::FEMapType FEMapType;
+
+public:
+  typedef typename BaseType::IntersectionType  IntersectionType;
+  typedef typename BaseType::EntityType        EntityType;
+  typedef typename BaseType::PatternType       PatternType;
+  typedef typename BaseType::BoundaryInfoType  BoundaryInfoType;
+
+  explicit PdelabBased(GridViewType gV)
+    : gridView_(gV)
+    , fe_map_(gridView_)
+    , backend_(gridView_, fe_map_)
+    , mapper_(backend_)
+    , communicator_(CommunicationChooser< GridViewImp >::create(gridView_))
+    , communicator_prepared_(false)
+  {}
+
+  /**
+   * \brief Copy ctor.
+   * \note  Manually implemented bc of the std::mutex + communicator_ unique_ptr
+   */
+  PdelabBased(const ThisType& other)
+    : gridView_(other.gridView_)
+    , fe_map_(gridView_)
+    , backend_(gridView_, fe_map_)
+    , mapper_(backend_)
+    , communicator_(CommunicationChooser< GridViewImp >::create(gridView_))
+    , communicator_prepared_(false)
+  {
+    // make sure our new communicator is prepared if other's was
+    if (other.communicator_prepared_)
+      const auto& DUNE_UNUSED(comm) = this->communicator();
+  }
+
+  /**
+   * \brief Move ctor.
+   * \note  Manually implemented bc of the std::mutex.
+   */
+  PdelabBased(ThisType&& source)
+    : gridView_(source.gridView_)
+    , fe_map_(source.fe_map_)
+    , backend_(source.backend_)
+    , mapper_(source.mapper_)
+    , communicator_(std::move(source.communicator_))
+    , communicator_prepared_(source.communicator_prepared_)
+  {}
+
+  ThisType& operator=(const ThisType& other) = delete;
+
+  ThisType& operator=(ThisType&& source) = delete;
+
+  const GridViewType& grid_view() const
+  {
+    return gridView_;
+  }
+
+  const BackendType& backend() const
+  {
+    return backend_;
+  }
+
+  const MapperType& mapper() const
+  {
+    return mapper_;
+  }
+
+  std::vector< DomainType > lagrange_points(const EntityType& entity) const
+  {
+    return ScalarBaseType::lagrange_points_order_1(entity);  //should do the right thing
+  }
+
+  std::set< size_t > local_dirichlet_DoFs(const EntityType& entity,
+                                          const BoundaryInfoType& boundaryInfo) const
+  {
+    return BaseType::local_dirichlet_DoFs_order_1(entity, boundaryInfo);  //throws a Dune_Not_Implemented atm
+  }
+
+  BaseFunctionSetType base_function_set(const EntityType& entity) const
+  {
+    return BaseFunctionSetType(backend_, entity);
+  }
+
+  CommunicatorType& communicator() const
+  {
+    std::lock_guard< std::mutex > DUNE_UNUSED(gg)(communicator_mutex_);
+    if (!communicator_prepared_)
+      communicator_prepared_ = CommunicationChooserType::prepare(*this, *communicator_);
+    return *communicator_;
+  } // ... communicator(...)
+
+private:
+  GridViewType gridView_;
+  const FEMapType fe_map_;
+  const BackendType backend_;
+  const MapperType mapper_;
+  mutable std::unique_ptr<CommunicatorType> communicator_;
+  mutable bool communicator_prepared_;
+  mutable std::mutex communicator_mutex_;
+}; // class PdelabBased< ..., dimRange, 1 >
 
 
 #else // HAVE_DUNE_PDELAB
