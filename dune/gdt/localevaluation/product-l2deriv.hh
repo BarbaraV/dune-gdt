@@ -268,7 +268,7 @@ public:
     const auto functionValue = localFunction.evaluate(localPoint);
     // evaluate test base
     const size_t size = testBase.size();
-    const std::vector< JacobianRangeType > testgradients(size, JacobianRangeType(0));
+    std::vector< JacobianRangeType > testgradients(size, JacobianRangeType(0));
     testBase.jacobian(localPoint, testgradients);
     // compute product
     assert(ret.size() >= size);
