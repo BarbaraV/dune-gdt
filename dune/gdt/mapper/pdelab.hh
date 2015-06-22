@@ -42,7 +42,8 @@ class ContinuousPdelabWrapperTraits
 public:
   typedef ContinuousPdelabWrapper< PdelabSpaceImp > derived_type;
   typedef PdelabSpaceImp                            BackendType;
-  typedef typename BackendType::Element             EntityType;
+  //typedef typename BackendType::Element             EntityType;
+  typedef typename BackendType::Traits::GridViewType::template Codim< 0>::Entity EntityType;
 };
 
 template< class PdelabSpaceImp >
@@ -146,6 +147,31 @@ protected:
     return this->lfs_.dofIndex(localIndex).entityIndex()[1];
   }
 }; // class ContinuousPdelabWrapper
+
+
+template< class PdelabSpaceImp >
+class ContinuousPowerPdelabWrapper
+  : public internal::PdelabWrapperBase< internal::ContinuousPdelabWrapperTraits< PdelabSpaceImp > >
+{
+public:
+  typedef typename internal::ContinuousPdelabWrapperTraits< PdelabSpaceImp > Traits;
+  typedef typename Traits::EntityType                                        EntityType;
+  static const                                                               size_t dimRange = PdelabSpaceImp::Traits::CHILDREN;
+
+  template< class... Args >
+  ContinuousPowerPdelabWrapper(Args&& ...args)
+    : internal::PdelabWrapperBase< Traits >(std::forward< Args >(args)...)
+  {}
+
+protected:
+  virtual size_t mapAfterBound(const EntityType& entity, const size_t& localIndex) const override
+  {
+    auto numlocalscalardofs = this->numDofs(entity)/dimRange;
+    auto numglobalscalardofs = this->size()/dimRange;
+    auto numcomp = localIndex/numlocalscalardofs; //should give integralpart of the division
+    return numcomp*numglobalscalardofs + this->lfs_.dofIndex(localIndex).entityIndex()[1];   //loclaIndex oder localIndex-numcomp*numlocalscalardofs ?
+  }
+}; // class ContinuousPowerPdelabWrapper
 
 
 template< class PdelabSpaceImp >

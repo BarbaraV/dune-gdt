@@ -11,6 +11,8 @@
 
 #if HAVE_DUNE_PDELAB
 # include <dune/pdelab/gridfunctionspace/localfunctionspace.hh>
+# include <dune/pdelab/gridfunctionspace/gridfunctionspace.hh>
+# include <dune/pdelab/constraints/conforming.hh>
 #endif
 
 #include <dune/stuff/common/type_utils.hh>
@@ -77,6 +79,26 @@ public:
   typedef EntityImp EntityType;
 private:
   friend class PdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, 1, 1 >;
+};
+
+
+template< class PdelabSpaceImp, class EntityImp,
+          class DomainFieldImp, size_t domainDim,
+          class RangeFieldImp, size_t rangeDim >
+class PdelabWrapperTraits< PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >
+{
+public:
+  typedef PdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 > derived_type;
+private:
+  typedef PDELab::GridFunctionSpace< typename PdelabSpaceImp::Traits::GridViewType,
+                                     typename PdelabSpaceImp::BaseT::ChildType::Traits::FiniteElementMapType, PDELab::OverlappingConformingDirichletConstraints > GFS;
+  typedef PDELab::LocalFunctionSpace< PdelabSpaceImp, PDELab::TrialSpaceTag > PdelabLFSType;
+  typedef FiniteElementInterfaceSwitch< typename GFS::Traits::FiniteElementType > FESwitchType;
+public:
+  typedef typename FESwitchType::Basis BackendType;
+  typedef EntityImp EntityType;
+private:
+  friend class PdelabWrapper < PdelabSpaceImp, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >;
 };
 
 
@@ -210,6 +232,106 @@ private:
   mutable DomainType tmp_domain_;
   std::unique_ptr< const PdelabLFSType > lfs_;
   std::unique_ptr< const BackendType > backend_;
+}; // class PdelabWrapper
+
+
+//! Specialization for dimRangeRows = 1
+template< class PdelabSpaceType, class EntityImp,
+          class DomainFieldImp, size_t domainDim,
+          class RangeFieldImp, size_t rangeDim >
+class PdelabWrapper< PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >
+  : public BaseFunctionSetInterface< internal::PdelabWrapperTraits< PdelabSpaceType, EntityImp,
+                                                       DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >,
+                                     DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >
+{
+  typedef PdelabWrapper < PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 > ThisType;
+  typedef BaseFunctionSetInterface
+      < internal::PdelabWrapperTraits< PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >,
+        DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 >
+      BaseType;
+public:
+  typedef internal::PdelabWrapperTraits< PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 > Traits;
+  typedef typename Traits::BackendType   BackendType;
+  typedef typename BackendType::Traits::RangeType ScalarRangeType;
+  typedef typename BackendType::Traits::JacobianType ScalarJacobianType;
+  typedef typename Traits::EntityType    EntityType;
+private:
+  typedef typename Traits::PdelabLFSType PdelabLFSType;
+  typedef typename Traits::FESwitchType  FESwitchType;
+
+public:
+  typedef typename BaseType::DomainType        DomainType;
+  typedef typename BaseType::RangeType         RangeType;
+  typedef typename BaseType::JacobianRangeType JacobianRangeType;
+
+  PdelabWrapper(const PdelabSpaceType& space, const EntityType& ent)
+    : BaseType(ent)
+    , tmp_domain_(0)
+  {
+    PdelabLFSType* lfs_ptr = new PdelabLFSType(space);
+    lfs_ptr->bind(this->entity());
+    lfs_ = std::unique_ptr< PdelabLFSType >(lfs_ptr);
+    backend_ = std::unique_ptr< BackendType >(new BackendType(FESwitchType::basis(lfs_->template child<0>().finiteElement())));
+    tmp_ranges_ = std::vector< ScalarRangeType >(backend_->size(), ScalarRangeType(0));
+    tmp_jacobian_ranges_ = std::vector< ScalarJacobianType >(backend_->size(), ScalarJacobianType(0));
+  } // PdelabWrapper(...)
+
+  PdelabWrapper(ThisType&& source) = default;
+  PdelabWrapper(const ThisType& /*other*/) = delete;
+
+  ThisType& operator=(const ThisType& /*other*/) = delete;
+
+  const BackendType& backend() const
+  {
+    return *backend_;
+  }
+
+  virtual size_t size() const override final
+  {
+    return (backend_->size())*rangeDim;
+  }
+
+  virtual size_t order() const override final
+  {
+    return backend_->order();
+  }
+
+  virtual void evaluate(const DomainType& xx, std::vector< RangeType >& ret) const override final
+  {
+    assert(ret.size() >= (backend_->size())*rangeDim);
+    backend_->evaluateFunction(xx, tmp_ranges_);
+    for (size_t ii = 0; ii < rangeDim; ++ii)
+      for (size_t jj = 0; jj < backend_->size(); ++jj)
+        ret[ii*(backend_->size())+jj][ii] = tmp_ranges_[jj];
+  }
+
+  using BaseType::evaluate;
+
+  //untested for vector-valued!
+  virtual void jacobian(const DomainType& xx, std::vector< JacobianRangeType >& ret) const override final
+  {
+    assert(ret.size() >= (backend_->size())*rangeDim);
+    backend_->evaluateJacobian(xx, tmp_jacobian_ranges_);
+    for (size_t ii =0; ii < rangeDim; ++ii)
+      for (size_t jj = 0; jj < backend_->size(); ++jj)
+        ret[ii*(backend_->size())+jj][ii] = tmp_jacobian_ranges_[jj][0];
+    const auto jacobian_inverse_transposed = this->entity().geometry().jacobianInverseTransposed(xx);
+    for (size_t ii = 0; ii < ret.size(); ++ii) {
+      for (size_t jj = 0; jj < rangeDim; ++jj) {
+        jacobian_inverse_transposed.mv(ret[ii][jj], tmp_domain_);
+        ret[ii][jj] = tmp_domain_;
+      }
+    }
+  } // ... jacobian(...)
+
+  using BaseType::jacobian;
+
+private:
+  mutable DomainType tmp_domain_;
+  std::unique_ptr< const PdelabLFSType > lfs_;
+  std::unique_ptr< const BackendType > backend_;
+  mutable std::vector< ScalarRangeType > tmp_ranges_;
+  mutable std::vector< ScalarJacobianType > tmp_jacobian_ranges_;
 }; // class PdelabWrapper
 
 
