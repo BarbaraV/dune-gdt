@@ -153,7 +153,7 @@ public:
   /**
     * \brief Computes a curlcurl evaluation for scalar local function and vector valued ansatz and test spaces
     * \tparam R RangeFieldType
-    * \note at the moment, there is no global-valued (i.e. defined on macroscopic grid) local function to be evaluated
+    * \note at the moment, there is no global-valued (i.e. defined on macroscopic grid) local function to be evaluated, this is only ok for truly periodic cases
     */
 
   template< class R, size_t r >
