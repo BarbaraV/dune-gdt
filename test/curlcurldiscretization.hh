@@ -70,7 +70,7 @@ public:
 
   typedef Dune::GDT::Spaces::Nedelec::PdelabBased< GridViewType, polOrder, double, dimRange > SpaceType;
 
-  typedef Dune::GDT::DiscreteFunction< SpaceType, VectorType >       DiscreteFunctionType;
+  //typedef Dune::GDT::DiscreteFunction< SpaceType, VectorType >       DiscreteFunctionType;
   typedef Dune::GDT::ConstDiscreteFunction < SpaceType, VectorType > ConstDiscreteFunctionType;
 
 
@@ -102,7 +102,7 @@ public:
     return space_;
   }
 
-  VectorType create_vector() const
+  VectorType create_vector() const   //oder besser VectorTypeComplex?
   {
     return VectorType(space_.mapper().size());
   }
@@ -113,10 +113,10 @@ public:
     using namespace Dune::GDT;
     if (!is_assembled_) {
       //prepare
-      Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_face_and_volume_pattern();
+      Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_volume_pattern();
       system_matrix_real_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
       system_matrix_imag_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
-      system_matrix_total_ = MatrixTypeComplex(space_.mapper().size(), space_.mapper().size());
+      system_matrix_total_ = MatrixTypeComplex(space_.mapper().size(), space_.mapper().size()); //,sparsity_pattern);
       rhs_vector_real_ = VectorType(space_.mapper().size());
       rhs_vector_imag_ = VectorType(space_.mapper().size());
       rhs_vector_total_ = VectorTypeComplex(space_.mapper().size());
@@ -194,7 +194,7 @@ public:
     typedef Dune::Stuff::LA::Solver< MatrixTypeComplex > SolverType;
     SolverType solver(system_matrix_total_);
     //solve
-    solver.apply(rhs_vector_total_, solution);
+    solver.apply(rhs_vector_total_, solution, "bicgstab.diagonal");
   } //solve()
 
   void visualize(const VectorTypeComplex& vector, const std::string filename, const std::string name) const
