@@ -143,13 +143,14 @@ public:
   }
 
   template< class RhsVectorType >
-  ConstDiscreteFunction< SpaceType, VectorType > reconstruct(const RhsVectorType& externfctvalue) const
+  void reconstruct(RhsVectorType& externfctvalue, DiscreteFunction< SpaceType, VectorType > reconstruction) const
   {
     if(!is_assembled_)
       assemble();
     // set up rhs
-    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, typename RhsVectorType::RealType, dimDomain > ConstFct;
-    ConstFct constrhs(-1.0*externfctvalue);
+    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, typename RhsVectorType::field_type, dimDomain > ConstFct;
+    externfctvalue *= -1.0;
+    ConstFct constrhs(externfctvalue);
     typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
     RhsFuncType rhsfunc(kappa_, constrhs);
     typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2grad< RhsFuncType > > L2gradOp;
@@ -167,8 +168,13 @@ public:
     solver.apply(rhs_vector_, solution, "lu.sparse");
 
     //make discrete function
-    Dune::GDT::ConstDiscreteFunction< SpaceType, VectorType >& reconstructedfct(space_, solution);
-    return reconstructedfct;
+    reconstruction.vector() = solution;
+  }
+
+  const typename ScalarFct::RangeFieldType averageparameter() const
+  {
+    // integrate kappa_ over UnitCube
+    return 1;
   }
 
 private:
@@ -262,13 +268,14 @@ public:
   }
 
   template< class RhsVectorType >
-  ConstDiscreteFunction< SpaceType, VectorType > reconstruct(const RhsVectorType& externfctvalue) const
+  void reconstruct(RhsVectorType& externfctvalue, DiscreteFunction< SpaceType, VectorType > reconstruction) const
   {
     if(!is_assembled_)
       assemble();
     // set up rhs
-    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, typename RhsVectorType::RealType, dimDomain > ConstFct;
-    ConstFct constrhs(-1.0*externfctvalue);
+    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, typename RhsVectorType::field_type, dimDomain > ConstFct;
+    externfctvalue *= -1.0;
+    ConstFct constrhs(externfctvalue);
     typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
     RhsFuncType rhsfunc(mu_, constrhs);
     typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2curl< RhsFuncType > > L2curlOp;
@@ -286,8 +293,13 @@ public:
     solver.apply(rhs_vector_, solution, "lu.sparse");
 
     //make discrete function
-    Dune::GDT::ConstDiscreteFunction< SpaceType, VectorType >& reconstructedfct(space_, solution);
-    return reconstructedfct;
+    reconstruction.vector() = solution;
+  }
+
+  const typename ScalarFct::RangeFieldType averageparameter() const
+  {
+    //intergate mu_ over UnitCube
+    return 1;
   }
 
 private:
