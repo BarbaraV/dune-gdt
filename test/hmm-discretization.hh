@@ -45,8 +45,8 @@ public:
   static const unsigned int                 polOrder = polynomialOrder;
 
   typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename MacroGridViewType::Intersection >                                                               BoundaryInfoType;
-  typedef Dune::Stuff::LocalizableFunctionInterface< typename MacroGridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, dimRange > Vectorfct;
-  typedef Dune::Stuff::LocalizableFunctionInterface< typename MacroGridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, 1 >        ScalarFct;
+  typedef Dune::Stuff::LocalizableFunctionInterface< typename MacroGridViewType::template Codim< 0 >::Entity, MacroDomainFieldType, dimDomain, double, dimRange > Vectorfct;
+  typedef Dune::Stuff::LocalizableFunctionInterface< typename MacroGridViewType::template Codim< 0 >::Entity, MacroDomainFieldType, dimDomain, double, 1 >        ScalarFct;
 
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType                 MatrixType;
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType                 VectorType;
@@ -147,7 +147,7 @@ public:
   } //solve
 
 private:
-  const SpaceType& space_;
+  const SpaceType space_;
   const CellGridViewType& cellgridview_;
   const BoundaryInfoType& bdry_info_;
   const ScalarFct& mu_;
