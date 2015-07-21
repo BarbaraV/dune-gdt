@@ -171,10 +171,67 @@ public:
     reconstruction.vector() = solution;
   }
 
+  void reconstruct(std::vector<DiscreteFunction< SpaceType, VectorType > > reconstruction) const
+  {
+    if(!is_assembled_)
+      assemble();
+    // prepare
+    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, RangeFieldType, dimDomain > ConstFct;
+    typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
+    typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2grad< RhsFuncType > > L2gradOp;
+    typedef LocalAssembler::Codim0Vector< L2gradOp > VectorAssembler;
+
+    SystemAssembler< SpaceType > walker(space_);
+    Stuff::LA::Solver< MatrixType > solver(system_matrix_);
+    auto solution = create_vector();
+
+    auto unit_mat = Stuff::Functions::internal::UnitMatrix< double, dimDomain >.unit_matrix();
+    unit_mat *= -1.0;
+
+    assert(reconstruction.size() >= dimDomain && "Reconstruction vector must have dimDoamin entries");
+    //solve for each unit vector and store corresponding discrete function in reconstruction
+    for (size_t ii = 0; ii < dimDomain; ++ii) {
+      //prepare rhs
+      ConstFct constfct(unit_mat[ii]);
+      RhsFuncType rhsfunc(kappa_, constfct);
+      L2gradOp l2gradop(rhsfunc);
+      VectorAssembler vectorassembler(l2gradop);
+      //assemble rhs
+      walker.add(vectorassembler, rhs_vector_);
+      walker.assemble();
+      //solve and make discrete function
+      solver.apply(rhs_vector_, solution, "lu.sparse");
+      reconstruction[ii].vector() = solution;
+      solution *= 0.0;
+    }
+  }
+
   const typename ScalarFct::RangeFieldType averageparameter() const
   {
-    // integrate kappa_ over UnitCube
-    return 1;
+    typename ScalarFct::RangeFieldType result(0.0);
+    const auto entity_it_end = space_.grid_view().template end<0>();
+    //integrate
+    for (auto entity_it = space_.grid_view().template begin<0>(); entity_it != entity_it_end; ++entity_it) {
+      const auto entity = *entity_it;
+      const auto localparam = kappa_.local_function(entity);
+      const size_t int_order = localparam->order();
+      //get quadrature rule
+      typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+      typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+      const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(int_order));
+      //loop over all quadrature points
+      const auto quadPointEndIt = volumeQuadrature.end();
+      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
+        const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+        //intergation factors
+        const double integration_factor = entity.geometry().integrationElement(x);
+        const double quadrature_weight = quadPointIt->weight();
+        //evaluate
+        const auto evaluation_result = localparam->evaluate(x);
+        result += evaluation_result * quadrature_weight * integration_factor;
+      } //loop over quadrature points
+    } //loop over entities
+    return result;
   }
 
 private:
@@ -296,10 +353,67 @@ public:
     reconstruction.vector() = solution;
   }
 
+  void reconstruct(std::vector<DiscreteFunction< SpaceType, VectorType > > reconstruction) const
+  {
+    if(!is_assembled_)
+      assemble();
+    // prepare
+    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, RangeFieldType, dimDomain > ConstFct;
+    typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
+    typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2curl< RhsFuncType > > L2curlOp;
+    typedef LocalAssembler::Codim0Vector< L2curlOp > VectorAssembler;
+
+    SystemAssembler< SpaceType > walker(space_);
+    Stuff::LA::Solver< MatrixType > solver(system_matrix_);
+    auto solution = create_vector();
+
+    auto unit_mat = Stuff::Functions::internal::UnitMatrix< double, dimDomain >.unit_matrix();
+    unit_mat *= -1.0;
+
+    assert(reconstruction.size() >= dimDomain && "Reconstruction vector must have dimDoamin entries");
+    //solve for each unit vector and store corresponding discrete function in reconstruction
+    for (size_t ii = 0; ii < dimDomain; ++ii) {
+      //prepare rhs
+      ConstFct constfct(unit_mat[ii]);
+      RhsFuncType rhsfunc(mu_, constfct);
+      L2curlOp l2curlop(rhsfunc);
+      VectorAssembler vectorassembler(l2curlop);
+      //assemble rhs
+      walker.add(vectorassembler, rhs_vector_);
+      walker.assemble();
+      //solve and make discrete function
+      solver.apply(rhs_vector_, solution, "lu.sparse");
+      reconstruction[ii].vector() = solution;
+      solution *= 0.0;
+    }
+  }
+
   const typename ScalarFct::RangeFieldType averageparameter() const
   {
-    //intergate mu_ over UnitCube
-    return 1;
+    typename ScalarFct::RangeFieldType result(0.0);
+    const auto entity_it_end = space_.grid_view().template end<0>();
+    //integrate
+    for (auto entity_it = space_.grid_view().template begin<0>(); entity_it != entity_it_end; ++entity_it) {
+      const auto entity = *entity_it;
+      const auto localparam = mu_.local_function(entity);
+      const size_t int_order = localparam->order();
+      //get quadrature rule
+      typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+      typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+      const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(int_order));
+      //loop over all quadrature points
+      const auto quadPointEndIt = volumeQuadrature.end();
+      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
+        const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+        //intergation factors
+        const double integration_factor = entity.geometry().integrationElement(x);
+        const double quadrature_weight = quadPointIt->weight();
+        //evaluate
+        const auto evaluation_result = localparam->evaluate(x);
+        result += evaluation_result * quadrature_weight * integration_factor;
+      } //loop over quadrature points
+    } //loop over entities
+    return result;
   }
 
 private:
