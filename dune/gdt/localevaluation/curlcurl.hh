@@ -42,6 +42,7 @@ public:
   typedef typename ParamFunctionType::DomainFieldType DomainFieldType;
   typedef std::tuple< std::shared_ptr< typename ParamFunctionType::LocalfunctionType > > LocalfunctionTupleType;
   static const size_t dimDomain = ParamFunctionType::dimDomain;
+  static_assert(dimDomain == 3, "Curl only defined on r^3");
 }; //class CurlCurlTraits
 
 }  //namespace internal
@@ -49,7 +50,6 @@ public:
 
 /**
   * \brief Computes a curlcurl evaluation: (paramfunction*curl(ansatz function)* curl(test function))
-  * \note only implemented for scalar parameter functions at the moment
   */
 template< class ParamFunctionImp >
 class CurlCurl
@@ -132,15 +132,15 @@ public:
     * \tparam R RangeFieldType
     */
 
-  template< class R, size_t r >
+  template< class R>
   void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,
-                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
-                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& ansatzBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
                 Dune::DynamicMatrix< R >& ret) const
   {
     typedef typename Stuff::LocalfunctionSetInterface
-         < EntityType, DomainFieldType, dimDomain, R, r, 1 >::JacobianRangeType JacobianRangeType;
+         < EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >::JacobianRangeType JacobianRangeType;
     //evaluate local function
     const auto functionValue = localFunction.evaluate(localPoint);
     //evaluate test gradient
@@ -163,6 +163,53 @@ public:
       }
     }
   } // ... evaluate (...)
+
+  /**
+   *  \brief  Computes a curlcurl evaluation for a 3x3 matrix-valued local function and vector-valued basefunctionsets.
+   *  \tparam R RangeFieldType
+   */
+  template< class R >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, dimDomain >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    //evaluate local function
+    const auto functionValue = localFunction.evaluate(localPoint);
+    //evaluate test gradient
+    const size_t rows = testBase.size();
+    const auto testGradients = testBase.jacobian(localPoint);
+    //evaluate ansatz gradient
+    const size_t cols = ansatzBase.size();
+    const auto ansatzGradients = ansatzBase.jacobian(localPoint);
+    //compute ansatzcurls
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >::RangeType RangeType;
+    std::vector< RangeType > ansatzCurls(cols, RangeType(0));
+    std::vector< RangeType > testCurls(rows, RangeType(0));
+    for (size_t jj = 0; jj < cols; ++jj){
+      ansatzCurls[jj][0] = ansatzGradients[jj][2][1] - ansatzGradients[jj][1][2];
+      ansatzCurls[jj][1] = ansatzGradients[jj][0][2] - ansatzGradients[jj][2][0];
+      ansatzCurls[jj][2] = ansatzGradients[jj][1][0] - ansatzGradients[jj][0][1];
+    }
+    //compute test curls and products
+    assert(ret.rows() >= rows);
+    assert(ret.cols() >= cols);
+    RangeType product(0.0);
+    for (size_t ii = 0; ii < rows; ++ii){
+      testCurls[jj][0] = testGradients[jj][2][1] - testGradients[jj][1][2];
+      testCurls[jj][1] = testGradients[jj][0][2] - testGradients[jj][2][0];
+      testCurls[jj][2] = testGradients[jj][1][0] - testGradients[jj][0][1];
+      auto& retRow = ret[ii];
+      for (size_t jj = 0; jj < cols; ++jj){
+        functionValue.mv(ansatzCurls[jj], product);
+        retRow[jj] = product * testCurls[ii];
+      }
+    }
+  } //evaluate with matrix local function
+
+  /// \}
 
 private:
   const ParamType& mu_;
