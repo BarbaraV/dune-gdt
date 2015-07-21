@@ -197,7 +197,7 @@ public:
     for (size_t jj = 0; jj<cols; ++jj) {
       ansatzcurl[jj][0] = aGrad[jj][2][1]-aGrad[jj][1][2];
       ansatzcurl[jj][1] = aGrad[jj][0][2]-aGrad[jj][2][0];
-      ansatzcurl[jj][2] = aGrad[jj][1][0]-aGrad[jj][0][2];
+      ansatzcurl[jj][2] = aGrad[jj][1][0]-aGrad[jj][0][1];
       cell.reconstruct(ansatzcurl[jj], ansatzreconstr[jj]);
       ansatzrhs.emplace_back(cell.rhs_vector());
       ansatzrhs[jj].scal(-1.0); //needed here because rhs = -1*param*ansatzcurl*curl cellfct
@@ -206,7 +206,7 @@ public:
       //prepare test curls and their reconstruction
       testcurl[ii][0] = tGrad[ii][2][1]-tGrad[ii][1][2];
       testcurl[ii][1] = tGrad[ii][0][2]-tGrad[ii][2][0];
-      testcurl[ii][2] = tGrad[ii][1][0]-tGrad[ii][0][2];
+      testcurl[ii][2] = tGrad[ii][1][0]-tGrad[ii][0][1];
       cell.reconstruct(testcurl[ii], testreconstr[ii]);
       testrhs.emplace_back(cell.rhs_vector());
       testrhs[ii].scal(-1.0);
@@ -216,7 +216,7 @@ public:
        retRow[jj] += testrhs[ii]*ansatzreconstr[jj].vector();
        retRow[jj] += ansatzrhs[jj]*testreconstr[ii].vector();       //check indices and order of multiplication here
        cellmatrix.mv(testreconstr[ii].vector(), tmp_vector);
-       retRow[jj] += ansatzreconstr[jj].vector()*tmp_vector;
+       retRow[jj] += ansatzreconstr[jj].vector()*tmp_vector;  //the divdiv part is included in the system matrix
       } //lop over cols
     } //loop over rows
   } // ... evaluate (...)
