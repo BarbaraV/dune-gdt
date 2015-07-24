@@ -30,6 +30,7 @@
 #include <dune/gdt/spaces/nedelec/pdelab.hh>
 #include <dune/gdt/localevaluation/hmm.hh>
 #include <dune/gdt/localoperator/codim0.hh>
+#include <dune/gdt/operators/curlcurl.hh>
 #include <dune/gdt/assembler/local/codim0.hh>
 #include <dune/gdt/assembler/system.hh>
 #include <dune/gdt/functionals/l2.hh>
@@ -39,17 +40,18 @@ template< class MacroGridViewType, class CellGridViewType, int polynomialOrder >
 class HMMDiscretization
 {
 public:
-  typedef typename MacroGridViewType::ctype MacroDomainFieldType;
-  static const size_t                       dimDomain = MacroGridViewType::dimension;
-  static const size_t                       dimRange = dimDomain;
-  static const unsigned int                 polOrder = polynomialOrder;
+  typedef typename MacroGridViewType::ctype                     MacroDomainFieldType;
+  typedef typename MacroGridViewType::template Codim<0>::Entity MacroEntityType;
+  static const size_t                                           dimDomain = MacroGridViewType::dimension;
+  static const size_t                                           dimRange = dimDomain;
+  static const unsigned int                                     polOrder = polynomialOrder;
 
-  typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename MacroGridViewType::Intersection >                                                               BoundaryInfoType;
-  typedef Dune::Stuff::LocalizableFunctionInterface< typename MacroGridViewType::template Codim< 0 >::Entity, MacroDomainFieldType, dimDomain, double, dimRange > Vectorfct;
-  typedef Dune::Stuff::LocalizableFunctionInterface< typename MacroGridViewType::template Codim< 0 >::Entity, MacroDomainFieldType, dimDomain, double, 1 >        ScalarFct;
+  typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename MacroGridViewType::Intersection >                            BoundaryInfoType;
+  typedef Dune::Stuff::LocalizableFunctionInterface< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimRange > Vectorfct;
+  typedef Dune::Stuff::LocalizableFunctionInterface< MacroEntityType, MacroDomainFieldType, dimDomain, double, 1 >        ScalarFct;
 
-  typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType                 MatrixType;
-  typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType                 VectorType;
+  typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType MatrixType;
+  typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType VectorType;
 
   typedef Dune::GDT::Spaces::Nedelec::PdelabBased< MacroGridViewType, polOrder, double, dimRange > SpaceType;
 
@@ -99,15 +101,37 @@ public:
       auto source_functional = Functionals::make_l2_volume(source_, rhs_vector_, space_);
       walker.add(*source_functional);
 
-      //lhs
-      typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMCurlcurl< ScalarFct, CellGridViewType, polOrder > > HMMcurlOp;
+      //lhs with truly HMM
+      /*typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMCurlcurl< ScalarFct, CellGridViewType, polOrder > > HMMcurlOp;
       const HMMcurlOp hmmcurl(mu_, divparam_, cellgridview_);
       const LocalAssembler::Codim0Matrix< HMMcurlOp > curlassembler(hmmcurl);
       walker.add(curlassembler, system_matrix_);
       typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMIdentity< ScalarFct, CellGridViewType, polOrder > > HMMidOp;
       const HMMidOp hmmid(kappa_, cellgridview_);
       const LocalAssembler::Codim0Matrix< HMMidOp > idassembler(hmmid);
-      walker.add(idassembler, system_matrix_);
+      walker.add(idassembler, system_matrix_); */
+
+      //lhs with effective matrices
+      //solve cell problems/compute effective matrices
+      GDT::Operators::Cell< CellGridViewType, polOrder, GDT::Operators::ChooseCellProblem::CurlcurlDivreg > curlcell(cellgridview_, mu_, divparam_);
+      GDT::Operators::Cell< CellGridViewType, polOrder, GDT::Operators::ChooseCellProblem::Elliptic > ellipticcell(cellgridview_, kappa_);
+      curlcell.assemble();
+      ellipticcell.assemble();
+      auto effective_mu = curlcell.effective_matrix();
+      auto effective_kappa = ellipticcell.effective_matrix();
+      //the effective matrices have to be cassted into constant macro functions
+      typedef Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimDomain, dimDomain > MatrixFct;
+      MatrixFct eff_mu_fct(effective_mu);
+      MatrixFct eff_kappa_fct(effective_kappa);
+
+      //assemble macro lhs
+      typedef GDT::Operators::CurlCurl< MatrixFct, MatrixType, SpaceType > CurlOpType;
+      const CurlOpType curlop(eff_mu_fct, system_matrix_, space_);
+      walker.add(curlop);
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< MatrixFct > > IdOperatorType;
+      const IdOperatorType idop(eff_kappa_fct);
+      const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler(idop);
+      walker.add(idMatrixAssembler, system_matrix_);
 
       //apply the homogenous (!) Dirichlet constraints on the macro grid
       Spaces::DirichletConstraints< typename MacroGridViewType::Intersection >
