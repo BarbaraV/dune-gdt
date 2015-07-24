@@ -213,9 +213,9 @@ public:
       auto& retRow = ret[ii];
       for (size_t jj = 0; jj<cols; ++jj) {
        retRow[jj] += averageparam*(ansatzcurl[jj]*testcurl[ii]);
-       retRow[jj] += testrhs[ii]*ansatzreconstr[jj].vector();
-       retRow[jj] += ansatzrhs[jj]*testreconstr[ii].vector();       //check indices and order of multiplication here
-       cellmatrix.mv(testreconstr[ii].vector(), tmp_vector);
+       retRow[jj] += testrhs[jj]*ansatzreconstr[ii].vector();
+       retRow[jj] += testreconstr[jj].vector() * ansatzrhs[ii]; //for complex::conjugate!
+       cellmatrix.mv(testreconstr[ii].vector(), tmp_vector); //check indices and order of multiplication here
        retRow[jj] += ansatzreconstr[jj].vector()*tmp_vector;  //the divdiv part is included in the system matrix
       } //lop over cols
     } //loop over rows
@@ -357,11 +357,11 @@ public:
       testrhs[ii].scal(-1.0);
       auto& retRow = ret[ii];
       for (size_t jj = 0; jj<cols; ++jj) {
-        retRow[jj] += averageparam*(tValue[ii]*aValue[jj]);
-        retRow[jj] += testrhs[ii]*ansatzreconstr[jj].vector();
-        retRow[jj] += ansatzrhs[jj]*testreconstr[jj].vector();
-        cellmatrix.mv(ansatzreconstr[jj].vector(), tmp_vector);
-        retRow[jj] += testreconstr[ii].vector()*tmp_vector;
+        retRow[jj] += averageparam*(tValue[jj]*aValue[ii]);
+        retRow[jj] += testrhs[jj]*ansatzreconstr[ii].vector();
+        retRow[jj] += testreconstr[jj].vector() * ansatzrhs[ii];  //for complex:conjugate!
+        cellmatrix.mv(testreconstr[ii].vector(), tmp_vector);
+        retRow[jj] += ansatzreconstr[jj].vector()*tmp_vector;  //check for correct indices and order of multiplication!
       } //lop over cols
     } //loop over rows
   } // ... evaluate (...)
