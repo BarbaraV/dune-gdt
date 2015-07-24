@@ -171,40 +171,36 @@ public:
     reconstruction.vector() = solution;
   }
 
-  void reconstruct(std::vector<DiscreteFunction< SpaceType, VectorType > > reconstruction) const
+  Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
   {
+    auto unit_mat = Dune::Stuff::Functions::internal::UnitMatrix< double, dimDomain >.unit_matrix();
+    Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > ret;
     if(!is_assembled_)
       assemble();
-    // prepare
-    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, RangeFieldType, dimDomain > ConstFct;
-    typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
-    typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2grad< RhsFuncType > > L2gradOp;
-    typedef LocalAssembler::Codim0Vector< L2gradOp > VectorAssembler;
-
-    SystemAssembler< SpaceType > walker(space_);
-    Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    auto solution = create_vector();
-
-    auto unit_mat = Stuff::Functions::internal::UnitMatrix< double, dimDomain >.unit_matrix();
-    unit_mat *= -1.0;
-
-    assert(reconstruction.size() >= dimDomain && "Reconstruction vector must have dimDoamin entries");
-    //solve for each unit vector and store corresponding discrete function in reconstruction
-    for (size_t ii = 0; ii < dimDomain; ++ii) {
-      //prepare rhs
-      ConstFct constfct(unit_mat[ii]);
-      RhsFuncType rhsfunc(kappa_, constfct);
-      L2gradOp l2gradop(rhsfunc);
-      VectorAssembler vectorassembler(l2gradop);
-      //assemble rhs
-      walker.add(vectorassembler, rhs_vector_);
-      walker.assemble();
-      //solve and make discrete function
-      solver.apply(rhs_vector_, solution, "lu.sparse");
-      reconstruction[ii].vector() = solution;
-      solution *= 0.0;
+    const auto averageparam = averageparameter();
+    //prepare temporary storage
+    VectorType tmp_vector(space_.mapper().size());
+    typedef DiscreteFunction< SpaceType, VectorType > DiscrFct;
+    std::vector< DiscrFct > reconstr(dimDomain, DiscrFct(space_, tmp_vector));
+    std::vector< VectorType > tmp_rhs;
+    //compute solutions of cell problems
+    for (size_t ii =0; ii < dimDomain; ++ii) {
+      reconstruct(unit_mat[ii], reconstr[ii]);
+      tmp_rhs.emplace_back(rhs_vector_);
+      tmp_rhs[ii].scal(-1.0); //necessary because rhs was -kappa*e_i and we want kappa*e_i
     }
-  }
+    //compute matrix
+    for (size_t ii = 0; ii < dimDomain; ++ii) {
+      auto& retRow = ret[ii];
+      for (size_t jj = 0; jj < dimDomain; ++jj) {
+        retRow[jj] += averageparam * unit_mat[ii][jj];
+        retRow[jj] += tmp_rhs[jj] * reconstr[ii].vector();
+        retRow[jj] += reconstr[jj].vector() * tmp_rhs[ii]; //for complex, this has to be conjugated!
+        system_matrix_.mv(reconstr[ii].vector(), tmp_vector);
+        retRow[jj] += reconstr[jj] * tmp_vector;
+      }
+    }
+  } //effective_matrix()
 
   const typename ScalarFct::RangeFieldType averageparameter() const
   {
@@ -353,40 +349,36 @@ public:
     reconstruction.vector() = solution;
   }
 
-  void reconstruct(std::vector<DiscreteFunction< SpaceType, VectorType > > reconstruction) const
+  Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
   {
+    auto unit_mat = Dune::Stuff::Functions::internal::UnitMatrix< double, dimDomain >.unit_matrix();
+    Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > ret;
     if(!is_assembled_)
       assemble();
-    // prepare
-    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, RangeFieldType, dimDomain > ConstFct;
-    typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
-    typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2curl< RhsFuncType > > L2curlOp;
-    typedef LocalAssembler::Codim0Vector< L2curlOp > VectorAssembler;
-
-    SystemAssembler< SpaceType > walker(space_);
-    Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    auto solution = create_vector();
-
-    auto unit_mat = Stuff::Functions::internal::UnitMatrix< double, dimDomain >.unit_matrix();
-    unit_mat *= -1.0;
-
-    assert(reconstruction.size() >= dimDomain && "Reconstruction vector must have dimDoamin entries");
-    //solve for each unit vector and store corresponding discrete function in reconstruction
-    for (size_t ii = 0; ii < dimDomain; ++ii) {
-      //prepare rhs
-      ConstFct constfct(unit_mat[ii]);
-      RhsFuncType rhsfunc(mu_, constfct);
-      L2curlOp l2curlop(rhsfunc);
-      VectorAssembler vectorassembler(l2curlop);
-      //assemble rhs
-      walker.add(vectorassembler, rhs_vector_);
-      walker.assemble();
-      //solve and make discrete function
-      solver.apply(rhs_vector_, solution, "lu.sparse");
-      reconstruction[ii].vector() = solution;
-      solution *= 0.0;
+    const auto averageparam = averageparameter();
+    //prepare temporary storage
+    VectorType tmp_vector(space_.mapper().size());
+    typedef DiscreteFunction< SpaceType, VectorType > DiscrFct;
+    std::vector< DiscrFct > reconstr(dimDomain, DiscrFct(space_, tmp_vector));
+    std::vector< VectorType > tmp_rhs;
+    //compute solutions of cell problems
+    for (size_t ii =0; ii < dimDomain; ++ii) {
+      reconstruct(unit_mat[ii], reconstr[ii]);
+      tmp_rhs.emplace_back(rhs_vector_);
+      tmp_rhs[ii].scal(-1.0); //necessary because rhs was -mu*e_i and we want mu*e_i
     }
-  }
+    //compute matrix
+    for (size_t ii = 0; ii < dimDomain; ++ii) {
+      auto& retRow = ret[ii];
+      for (size_t jj = 0; jj < dimDomain; ++jj) {
+        retRow[jj] += averageparam * unit_mat[ii][jj];
+        retRow[jj] += tmp_rhs[jj] * reconstr[ii].vector();
+        retRow[jj] += reconstr[jj].vector() * tmp_rhs[ii]; //for complex, this has to be conjugated!
+        system_matrix_.mv(reconstr[ii].vector(), tmp_vector);
+        retRow[jj] += reconstr[jj] * tmp_vector;
+      }
+    }
+  } //effective_matrix()
 
   const typename ScalarFct::RangeFieldType averageparameter() const
   {
