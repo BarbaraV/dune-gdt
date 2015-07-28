@@ -119,14 +119,14 @@ public:
       ellipticcell.assemble();
       auto effective_mu = curlcell.effective_matrix();
       auto effective_kappa = ellipticcell.effective_matrix();
-      //the effective matrices have to be cassted into constant macro functions
+      //the effective matrices have to be cast into constant macro functions
       typedef Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimDomain, dimDomain > MatrixFct;
       MatrixFct eff_mu_fct(effective_mu);
       MatrixFct eff_kappa_fct(effective_kappa);
 
       //assemble macro lhs
       typedef GDT::Operators::CurlCurl< MatrixFct, MatrixType, SpaceType > CurlOpType;
-      const CurlOpType curlop(eff_mu_fct, system_matrix_, space_);
+      CurlOpType curlop(eff_mu_fct, system_matrix_, space_);
       walker.add(curlop);
       typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< MatrixFct > > IdOperatorType;
       const IdOperatorType idop(eff_kappa_fct);

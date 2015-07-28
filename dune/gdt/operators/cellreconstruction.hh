@@ -173,7 +173,7 @@ public:
 
   Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
   {
-    auto unit_mat = Dune::Stuff::Functions::internal::UnitMatrix< double, dimDomain >.unit_matrix();
+    auto unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
     Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > ret;
     if(!is_assembled_)
       assemble();
@@ -197,9 +197,10 @@ public:
         retRow[jj] += tmp_rhs[jj] * reconstr[ii].vector();
         retRow[jj] += reconstr[jj].vector() * tmp_rhs[ii]; //for complex, this has to be conjugated!
         system_matrix_.mv(reconstr[ii].vector(), tmp_vector);
-        retRow[jj] += reconstr[jj] * tmp_vector;
+        retRow[jj] += reconstr[jj].vector() * tmp_vector;
       }
     }
+    return ret;
   } //effective_matrix()
 
   const typename ScalarFct::RangeFieldType averageparameter() const
@@ -208,7 +209,7 @@ public:
     const auto entity_it_end = space_.grid_view().template end<0>();
     //integrate
     for (auto entity_it = space_.grid_view().template begin<0>(); entity_it != entity_it_end; ++entity_it) {
-      const auto entity = *entity_it;
+      const auto& entity = *entity_it;
       const auto localparam = kappa_.local_function(entity);
       const size_t int_order = localparam->order();
       //get quadrature rule
@@ -351,7 +352,7 @@ public:
 
   Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
   {
-    auto unit_mat = Dune::Stuff::Functions::internal::UnitMatrix< double, dimDomain >.unit_matrix();
+    auto unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
     Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > ret;
     if(!is_assembled_)
       assemble();
@@ -375,9 +376,10 @@ public:
         retRow[jj] += tmp_rhs[jj] * reconstr[ii].vector();
         retRow[jj] += reconstr[jj].vector() * tmp_rhs[ii]; //for complex, this has to be conjugated!
         system_matrix_.mv(reconstr[ii].vector(), tmp_vector);
-        retRow[jj] += reconstr[jj] * tmp_vector;
+        retRow[jj] += reconstr[jj].vector() * tmp_vector;
       }
     }
+    return ret;
   } //effective_matrix()
 
   const typename ScalarFct::RangeFieldType averageparameter() const
@@ -386,7 +388,7 @@ public:
     const auto entity_it_end = space_.grid_view().template end<0>();
     //integrate
     for (auto entity_it = space_.grid_view().template begin<0>(); entity_it != entity_it_end; ++entity_it) {
-      const auto entity = *entity_it;
+      const auto& entity = *entity_it;
       const auto localparam = mu_.local_function(entity);
       const size_t int_order = localparam->order();
       //get quadrature rule
