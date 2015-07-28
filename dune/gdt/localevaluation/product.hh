@@ -282,6 +282,34 @@ public:
   } // ... evaluate(...)
 
   /**
+    * \brief Computes a product evaluation for a 2x2 matrix-valued local function and (dimRange=2) vector-valued basefunctionsets
+    * \note Unfortunately, we need this specialization, otherwise the compiler will complain for a scalar local function and scalar basefunctions
+    */
+  template< class R >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 2, 2 >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, 2, 1 >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, 2, 1 >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    evaluate_matrix_valued_(localFunction, testBase, ansatzBase, localPoint, ret);
+  }
+
+  /**
+    * \brief Computes a product evaluation for a 3x3 matrix-valued local function and (dimRange=3) vector-valued basefunctionsets
+    * \note Unfortunately, we need this specialization, otherwise the compiler will complain for a scalar local function and scalar basefunctions
+    */
+  template< class R >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 3, 3 >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, 3, 1 >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, 3, 1 >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    evaluate_matrix_valued_(localFunction, testBase, ansatzBase, localPoint, ret);
+  }
+
+  /**
    * \note for `LocalEvaluation::Codim1Interface< ..., 1 >`
    */
   template< class IntersectionType, class R >
@@ -338,6 +366,34 @@ public:
   /// \}
 
 private:
+  template< class R, size_t r >
+  void evaluate_matrix_valued_(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, r, r >& localFunction,
+                          const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
+                          const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& ansatzBase,
+                          const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                          Dune::DynamicMatrix< R >& ret) const
+  {
+    // evaluate local function
+    const auto functionValue = localFunction.evaluate(localPoint);
+    // evaluate bases
+    const auto rows = testBase.size();
+    const auto cols = ansatzBase.size();
+    const auto testValues = testBase.evaluate(localPoint);
+    const auto ansatzValues = ansatzBase.evaluate(localPoint);
+    // compute product
+    assert(ret.rows() >= rows);
+    assert(ret.cols() >= cols);
+    typename Stuff::LocalfunctionSetInterface
+            < EntityType, DomainFieldType, dimDomain, R, r, 1 >::RangeType product(0.0);
+    for (size_t ii = 0; ii < rows; ++ii) {
+      auto& retRow = ret[ii];
+      for (size_t jj = 0; jj < cols; ++jj) {
+        functionValue.mv(ansatzValues[jj], product);
+        retRow[jj] = product * testValues[ii];
+      }
+    }
+  }
+
   const LocalizableFunctionType& inducingFunction_;
 }; // class Product
 
