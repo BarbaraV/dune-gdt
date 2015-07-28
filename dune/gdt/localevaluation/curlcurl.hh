@@ -198,9 +198,9 @@ public:
     assert(ret.cols() >= cols);
     RangeType product(0.0);
     for (size_t ii = 0; ii < rows; ++ii){
-      testCurls[jj][0] = testGradients[jj][2][1] - testGradients[jj][1][2];
-      testCurls[jj][1] = testGradients[jj][0][2] - testGradients[jj][2][0];
-      testCurls[jj][2] = testGradients[jj][1][0] - testGradients[jj][0][1];
+      testCurls[ii][0] = testGradients[ii][2][1] - testGradients[ii][1][2];
+      testCurls[ii][1] = testGradients[ii][0][2] - testGradients[ii][2][0];
+      testCurls[ii][2] = testGradients[ii][1][0] - testGradients[ii][0][1];
       auto& retRow = ret[ii];
       for (size_t jj = 0; jj < cols; ++jj){
         functionValue.mv(ansatzCurls[jj], product);
