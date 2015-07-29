@@ -143,7 +143,7 @@ public:
   }
 
   template< class RhsVectorType >
-  void reconstruct(RhsVectorType& externfctvalue, DiscreteFunction< SpaceType, VectorType > reconstruction) const
+  void reconstruct(RhsVectorType& externfctvalue, VectorType cell_sol) const
   {
     if(!is_assembled_)
       assemble();
@@ -163,12 +163,8 @@ public:
     walker.assemble();
 
     //solve
-    auto solution = create_vector();
     Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, solution, "lu.sparse");
-
-    //make discrete function
-    reconstruction.vector() = solution;
+    solver.apply(rhs_vector_, cell_sol, "lu.sparse");
   }
 
   Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
@@ -180,8 +176,7 @@ public:
     const auto averageparam = averageparameter();
     //prepare temporary storage
     VectorType tmp_vector(space_.mapper().size());
-    typedef DiscreteFunction< SpaceType, VectorType > DiscrFct;
-    std::vector< DiscrFct > reconstr(dimDomain, DiscrFct(space_, tmp_vector));
+    std::vector< VectorType > reconstr(dimDomain, tmp_vector);
     std::vector< VectorType > tmp_rhs;
     //compute solutions of cell problems
     for (size_t ii =0; ii < dimDomain; ++ii) {
@@ -194,10 +189,10 @@ public:
       auto& retRow = ret[ii];
       for (size_t jj = 0; jj < dimDomain; ++jj) {
         retRow[jj] += averageparam * unit_mat[ii][jj];
-        retRow[jj] += tmp_rhs[jj] * reconstr[ii].vector();
-        retRow[jj] += reconstr[jj].vector() * tmp_rhs[ii]; //for complex, this has to be conjugated!
-        system_matrix_.mv(reconstr[ii].vector(), tmp_vector);
-        retRow[jj] += reconstr[jj].vector() * tmp_vector;
+        retRow[jj] += tmp_rhs[jj] * reconstr[ii];
+        retRow[jj] += reconstr[jj] * tmp_rhs[ii]; //for complex, this has to be conjugated!
+        system_matrix_.mv(reconstr[ii], tmp_vector);
+        retRow[jj] += reconstr[jj] * tmp_vector;
       }
     }
     return ret;
@@ -322,7 +317,7 @@ public:
   }
 
   template< class RhsVectorType >
-  void reconstruct(RhsVectorType& externfctvalue, DiscreteFunction< SpaceType, VectorType > reconstruction) const
+  void reconstruct(RhsVectorType& externfctvalue, VectorType cell_sol) const
   {
     if(!is_assembled_)
       assemble();
@@ -342,12 +337,8 @@ public:
     walker.assemble();
 
     //solve
-    auto solution = create_vector();
     Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, solution, "lu.sparse");
-
-    //make discrete function
-    reconstruction.vector() = solution;
+    solver.apply(rhs_vector_, cell_sol, "lu.sparse");
   }
 
   Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
@@ -359,8 +350,7 @@ public:
     const auto averageparam = averageparameter();
     //prepare temporary storage
     VectorType tmp_vector(space_.mapper().size());
-    typedef DiscreteFunction< SpaceType, VectorType > DiscrFct;
-    std::vector< DiscrFct > reconstr(dimDomain, DiscrFct(space_, tmp_vector));
+    std::vector< VectorType > reconstr(dimDomain, tmp_vector);
     std::vector< VectorType > tmp_rhs;
     //compute solutions of cell problems
     for (size_t ii =0; ii < dimDomain; ++ii) {
@@ -373,10 +363,10 @@ public:
       auto& retRow = ret[ii];
       for (size_t jj = 0; jj < dimDomain; ++jj) {
         retRow[jj] += averageparam * unit_mat[ii][jj];
-        retRow[jj] += tmp_rhs[jj] * reconstr[ii].vector();
-        retRow[jj] += reconstr[jj].vector() * tmp_rhs[ii]; //for complex, this has to be conjugated!
-        system_matrix_.mv(reconstr[ii].vector(), tmp_vector);
-        retRow[jj] += reconstr[jj].vector() * tmp_vector;
+        retRow[jj] += tmp_rhs[jj] * reconstr[ii];
+        retRow[jj] += reconstr[jj] * tmp_rhs[ii]; //for complex, this has to be conjugated!
+        system_matrix_.mv(reconstr[ii], tmp_vector);
+        retRow[jj] += reconstr[jj] * tmp_vector;
       }
     }
     return ret;

@@ -187,10 +187,9 @@ public:
     const auto& cellmatrix = cell.system_matrix();
     const auto averageparam = cell.averageparameter();
     //perpare temporary storage
-    typedef DiscreteFunction< typename CellProblemType::SpaceType, typename CellProblemType::VectorType > DiscrFunction;
     typename CellProblemType::VectorType tmp_vector(cell.space().mapper().size());
-    std::vector< DiscrFunction > testreconstr(rows, DiscrFunction(cell.space(), tmp_vector));
-    std::vector< DiscrFunction > ansatzreconstr(cols, DiscrFunction(cell.space(), tmp_vector));
+    std::vector< typename CellProblemType::VectorType > testreconstr(rows, tmp_vector);
+    std::vector< typename CellProblemType::VectorType > ansatzreconstr(cols, tmp_vector);
     std::vector< typename CellProblemType::VectorType > testrhs;
     std::vector< typename CellProblemType::VectorType > ansatzrhs;
     // perpare ansatz curls and their reconstruction
@@ -213,11 +212,11 @@ public:
       auto& retRow = ret[ii];
       for (size_t jj = 0; jj<cols; ++jj) {
        retRow[jj] += averageparam*(ansatzcurl[jj]*testcurl[ii]);
-       retRow[jj] += testrhs[jj]*ansatzreconstr[ii].vector();
-       retRow[jj] += testreconstr[jj].vector() * ansatzrhs[ii]; //for complex::conjugate!
-       cellmatrix.mv(testreconstr[ii].vector(), tmp_vector); //check indices and order of multiplication here
-       retRow[jj] += ansatzreconstr[jj].vector()*tmp_vector;  //the divdiv part is included in the system matrix
-      } //lop over cols
+       retRow[jj] += testrhs[jj]*ansatzreconstr[ii];
+       retRow[jj] += testreconstr[jj] * ansatzrhs[ii]; //for complex::conjugate!
+       cellmatrix.mv(testreconstr[ii], tmp_vector); //check indices and order of multiplication here
+       retRow[jj] += ansatzreconstr[jj]*tmp_vector;  //the divdiv part is included in the system matrix
+      } //loop over cols
     } //loop over rows
   } // ... evaluate (...)
 
@@ -339,9 +338,8 @@ public:
     const auto averageparam = cell.averageparameter();
     //perpare temporary storage
     typename CellProblemType::VectorType tmp_vector(cell.space().mapper().size());
-    typedef DiscreteFunction< typename CellProblemType::SpaceType , typename CellProblemType::VectorType >  DiscrFct;
-    std::vector< DiscrFct > testreconstr(rows, DiscrFct(cell.space(), tmp_vector));
-    std::vector< DiscrFct > ansatzreconstr(cols, DiscrFct(cell.space(), tmp_vector));
+    std::vector< typename CellProblemType::VectorType > testreconstr(rows, tmp_vector);
+    std::vector< typename CellProblemType::VectorType > ansatzreconstr(cols, tmp_vector);
     std::vector< typename CellProblemType::VectorType > testrhs;
     std::vector< typename CellProblemType::VectorType > ansatzrhs;
     // perpare ansatz reconstruction
@@ -358,11 +356,11 @@ public:
       auto& retRow = ret[ii];
       for (size_t jj = 0; jj<cols; ++jj) {
         retRow[jj] += averageparam*(tValue[jj]*aValue[ii]);
-        retRow[jj] += testrhs[jj]*ansatzreconstr[ii].vector();
-        retRow[jj] += testreconstr[jj].vector() * ansatzrhs[ii];  //for complex:conjugate!
-        cellmatrix.mv(testreconstr[ii].vector(), tmp_vector);
-        retRow[jj] += ansatzreconstr[jj].vector()*tmp_vector;  //check for correct indices and order of multiplication!
-      } //lop over cols
+        retRow[jj] += testrhs[jj]*ansatzreconstr[ii];
+        retRow[jj] += testreconstr[jj] * ansatzrhs[ii];  //for complex:conjugate!
+        cellmatrix.mv(testreconstr[ii], tmp_vector);
+        retRow[jj] += ansatzreconstr[jj]*tmp_vector;  //check for correct indices and order of multiplication!
+      } //loop over cols
     } //loop over rows
   } // ... evaluate (...)
 
