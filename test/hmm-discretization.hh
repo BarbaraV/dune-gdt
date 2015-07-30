@@ -52,6 +52,8 @@ public:
 
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType MatrixType;
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType VectorType;
+  typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType ComplexMatrixType;
+  typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType ComplexVectorType;
 
   typedef Dune::GDT::Spaces::Nedelec::PdelabBased< MacroGridViewType, polOrder, double, dimRange > SpaceType;
 
@@ -62,19 +64,27 @@ public:
                     const CellGridViewType& cellgridview,
                     const BoundaryInfoType& info,
                     const ScalarFct& mu,
-                    const ScalarFct& kappa,
-                    const Vectorfct& source,
+                    const ScalarFct& kappa_real,
+                    const ScalarFct& kappa_imag,
+                    const Vectorfct& source_real,
+                    const Vectorfct& source_imag,
                     const ScalarFct& divparam)
     : space_(macrogridview)
     , cellgridview_(cellgridview)
     , bdry_info_(info)
     , mu_(mu)
-    , kappa_(kappa)
-    , source_(source)
+    , kappa_real_(kappa_real)
+    , kappa_imag_(kappa_imag)
+    , source_real_(source_real)
+    , source_imag_(source_imag)
     , divparam_(divparam)
     , is_assembled_(false)
-    , system_matrix_(0,0)
-    , rhs_vector_(0)
+    , system_matrix_real_(0,0)
+    , system_matrix_imag_(0,0)
+    , system_matrix_total_(0,0)
+    , rhs_vector_real_(0)
+    , rhs_vector_imag_(0)
+    , rhs_vector_total_(0)
   {}
 
   const SpaceType& space() const
@@ -93,13 +103,19 @@ public:
     using namespace Dune::GDT;
     if (!is_assembled_) {
       Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_volume_pattern();
-      system_matrix_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
-      rhs_vector_ = VectorType(space_.mapper().size());
+      system_matrix_real_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
+      system_matrix_imag_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
+      system_matrix_total_ = ComplexMatrixType(space_.mapper().size(), space_.mapper().size());
+      rhs_vector_real_ = VectorType(space_.mapper().size());
+      rhs_vector_imag_ = VectorType(space_.mapper().size());
+      rhs_vector_total_ = ComplexVectorType(space_.mapper().size());
       SystemAssembler< SpaceType > walker(space_);
 
       //rhs
-      auto source_functional = Functionals::make_l2_volume(source_, rhs_vector_, space_);
-      walker.add(*source_functional);
+      auto source_functional_real = Functionals::make_l2_volume(source_real_, rhs_vector_real_, space_);
+      walker.add(*source_functional_real);
+      auto source_functional_imag = Functionals::make_l2_volume(source_imag_, rhs_vector_imag_, space_);
+      walker.add(*source_functional_imag);
 
       //lhs with truly HMM
       /*typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMCurlcurl< ScalarFct, CellGridViewType, polOrder > > HMMcurlOp;
@@ -114,31 +130,46 @@ public:
       //lhs with effective matrices
       //solve cell problems/compute effective matrices
       GDT::Operators::Cell< CellGridViewType, polOrder, GDT::Operators::ChooseCellProblem::CurlcurlDivreg > curlcell(cellgridview_, mu_, divparam_);
-      GDT::Operators::Cell< CellGridViewType, polOrder, GDT::Operators::ChooseCellProblem::Elliptic > ellipticcell(cellgridview_, kappa_);
+      GDT::Operators::Cell< CellGridViewType, polOrder, GDT::Operators::ChooseCellProblem::Elliptic > ellipticcell(cellgridview_, kappa_real_, kappa_imag_);
       curlcell.assemble();
       ellipticcell.assemble();
       auto effective_mu = curlcell.effective_matrix();
-      auto effective_kappa = ellipticcell.effective_matrix();
+      auto effective_kappa_real = ellipticcell.effective_matrix()[0];
+      auto effective_kappa_imag = ellipticcell.effective_matrix()[0];
       //the effective matrices have to be cast into constant macro functions
       typedef Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimDomain, dimDomain > MatrixFct;
       MatrixFct eff_mu_fct(effective_mu);
-      MatrixFct eff_kappa_fct(effective_kappa);
+      MatrixFct eff_kappa_real_fct(effective_kappa_real);
+      MatrixFct eff_kappa_imag_fct(effective_kappa_imag);
 
       //assemble macro lhs
       typedef GDT::Operators::CurlCurl< MatrixFct, MatrixType, SpaceType > CurlOpType;
-      CurlOpType curlop(eff_mu_fct, system_matrix_, space_);
+      CurlOpType curlop(eff_mu_fct, system_matrix_real_, space_);
       walker.add(curlop);
       typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< MatrixFct > > IdOperatorType;
-      const IdOperatorType idop(eff_kappa_fct);
-      const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler(idop);
-      walker.add(idMatrixAssembler, system_matrix_);
+      const IdOperatorType idop1(eff_kappa_real_fct);
+      const IdOperatorType idop2(eff_kappa_imag_fct);
+      const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler1(idop1);
+      const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler2(idop2);
+      walker.add(idMatrixAssembler1, system_matrix_real_);
+      walker.add(idMatrixAssembler2, system_matrix_imag_);
 
       //apply the homogenous (!) Dirichlet constraints on the macro grid
       Spaces::DirichletConstraints< typename MacroGridViewType::Intersection >
               dirichlet_constraints(bdry_info_, space_.mapper().size());
       walker.add(dirichlet_constraints);
       walker.assemble();
-      dirichlet_constraints.apply(system_matrix_, rhs_vector_);
+      dirichlet_constraints.apply(system_matrix_real_, rhs_vector_real_);
+      dirichlet_constraints.apply(system_matrix_imag_, rhs_vector_imag_);
+
+      //assembly of total (complex) matrix and vector
+      std::complex< double > im(0.0, 1.0);
+      system_matrix_total_.backend() = system_matrix_imag_.backend().template cast< std::complex< double > >();
+      system_matrix_total_.scal(im);
+      system_matrix_total_.backend() += system_matrix_real_.backend().template cast< std::complex< double > >();
+      rhs_vector_total_.backend() = rhs_vector_imag_.backend().template cast< std::complex< double > >();
+      rhs_vector_total_.scal(im);
+      rhs_vector_total_.backend() += rhs_vector_real_.backend().template cast< std::complex< double > > ();
 
       is_assembled_ = true;
     }
@@ -150,24 +181,24 @@ public:
   }
 
 
-  const MatrixType& system_matrix() const
+  const ComplexMatrixType& system_matrix() const
   {
-    return system_matrix_;
+    return system_matrix_total_;
   }
 
 
-  const VectorType& rhs_vector() const
+  const ComplexVectorType& rhs_vector() const
   {
-    return rhs_vector_;
+    return rhs_vector_total_;
   }
 
-  void solve(VectorType& solution) const
+  void solve(ComplexVectorType& solution) const
   {
     if (!is_assembled_)
       assemble();
 
-    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+    Dune::Stuff::LA::Solver< ComplexMatrixType > solver(system_matrix_total_);
+    solver.apply(rhs_vector_total_, solution, "bicgstab.diagonal");
   } //solve
 
 private:
@@ -175,12 +206,18 @@ private:
   const CellGridViewType& cellgridview_;
   const BoundaryInfoType& bdry_info_;
   const ScalarFct& mu_;
-  const ScalarFct& kappa_;
-  const Vectorfct& source_;
+  const ScalarFct& kappa_real_;
+  const ScalarFct& kappa_imag_;
+  const Vectorfct& source_real_;
+  const Vectorfct& source_imag_;
   const ScalarFct& divparam_;
   mutable bool is_assembled_;
-  mutable MatrixType system_matrix_;
-  mutable VectorType rhs_vector_;
+  mutable MatrixType system_matrix_real_;
+  mutable MatrixType system_matrix_imag_;
+  mutable ComplexMatrixType system_matrix_total_;
+  mutable VectorType rhs_vector_real_;
+  mutable VectorType rhs_vector_imag_;
+  mutable ComplexVectorType rhs_vector_total_;
 };
 
 #endif // DUNE_GDT_TEST_HMM_DISCRETIZATION_HH
