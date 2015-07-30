@@ -60,10 +60,12 @@ public:
 
   static const unsigned int polOrder = polynomialOrder;
   typedef double            RangeFieldType;
+  typedef std::complex< RangeFieldType > complextype;
 
   typedef Dune::Stuff::LA::Container< RangeFieldType, Dune::Stuff::LA::ChooseBackend::eigen_sparse >::MatrixType MatrixType;
   typedef Dune::Stuff::LA::Container< RangeFieldType, Dune::Stuff::LA::ChooseBackend::eigen_sparse >::VectorType VectorType;
-
+  typedef Dune::Stuff::LA::Container< complextype, Dune::Stuff::LA::ChooseBackend::eigen_sparse >::MatrixType    ComplexMatrixType;
+  typedef Dune::Stuff::LA::Container< complextype, Dune::Stuff::LA::ChooseBackend::eigen_sparse >::VectorType    ComplexVectorType;
 };
 
 
@@ -80,6 +82,8 @@ public:
   typedef typename Traits::RangeFieldType RangeFieldType;
   typedef typename Traits::MatrixType MatrixType;
   typedef typename Traits::VectorType VectorType;
+  typedef typename Traits::ComplexMatrixType ComplexMatrixType;
+  typedef typename Traits::ComplexVectorType ComplexVectorType;
 
   static const size_t       dimDomain = Traits::dimDomain;
   static const unsigned int polOrder = Traits::polOrder;
@@ -87,12 +91,17 @@ public:
   typedef Dune::Stuff::LocalizableFunctionInterface< EntityType, DomainFieldType, dimDomain, RangeFieldType, 1 > ScalarFct;
   typedef Dune::GDT::Spaces::CG::PdelabBased< GridViewImp, 1, RangeFieldType, 1 > SpaceType;
 
-  Cell(const GridViewImp& gridview, const ScalarFct& kappa)
+  Cell(const GridViewImp& gridview, const ScalarFct& kappa_real, const ScalarFct& kappa_imag)
     : space_(gridview)
-    , kappa_(kappa)
+    , kappa_real_(kappa_real)
+    , kappa_imag_(kappa_imag)
     , is_assembled_(false)
-    , system_matrix_(0,0)
-    , rhs_vector_(0)
+    , system_matrix_real_(0,0)
+    , system_matrix_imag_(0,0)
+    , system_matrix_total_(0,0)
+    , rhs_vector_real_(0)
+    , rhs_vector_imag_(0)
+    , rhs_vector_total_(0)
   {}
 
   const SpaceType& space() const
@@ -112,17 +121,30 @@ public:
     if(!is_assembled_) {
       //prepare
       Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_volume_pattern();
-      system_matrix_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
-      rhs_vector_ = VectorType(space_.mapper().size());
+      system_matrix_real_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
+      system_matrix_imag_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
+      system_matrix_total_ = ComplexMatrixType(space_.mapper().size(), space_.mapper().size());
+      rhs_vector_real_ = VectorType(space_.mapper().size());
+      rhs_vector_imag_ = VectorType(space_.mapper().size());
+      rhs_vector_total_ = ComplexVectorType(space_.mapper().size());
       SystemAssembler< SpaceType > walker(space_);
 
       //lhs
       typedef LocalOperator::Codim0Integral< LocalEvaluation::Elliptic< ScalarFct > > EllipticOp;
-      EllipticOp ellipticop(kappa_);
-      LocalAssembler::Codim0Matrix< EllipticOp > matrixassembler(ellipticop);
-      walker.add(matrixassembler, system_matrix_);
+      EllipticOp ellipticop1(kappa_real_);
+      EllipticOp ellipticop2(kappa_imag_);
+      LocalAssembler::Codim0Matrix< EllipticOp > matrixassembler1(ellipticop1);
+      LocalAssembler::Codim0Matrix< EllipticOp > matrixassembler2(ellipticop2);
+      walker.add(matrixassembler1, system_matrix_real_);
+      walker.add(matrixassembler2, system_matrix_imag_);
 
       walker.assemble();
+
+      std::complex< RangeFieldType > im(0.0, 1.0);
+      system_matrix_total_.backend() = system_matrix_imag_.backend().template cast< std::complex< RangeFieldType > >();
+      system_matrix_total_.scal(im);
+      system_matrix_total_.backend() += system_matrix_real_.backend().template cast< std::complex< RangeFieldType > >();
+
       is_assembled_ = true;
     }
   } //assemble
@@ -132,18 +154,18 @@ public:
     return is_assembled_;
   }
 
-  const MatrixType& system_matrix() const
+  const ComplexMatrixType& system_matrix() const
   {
-    return system_matrix_;
+    return system_matrix_total_;
   }
 
-  const VectorType& rhs_vector() const
+  const ComplexVectorType& rhs_vector() const
   {
-    return rhs_vector_;
+    return rhs_vector_total_;
   }
 
   template< class RhsVectorType >
-  void reconstruct(RhsVectorType& externfctvalue, VectorType cell_sol) const
+  void reconstruct(RhsVectorType& externfctvalue, ComplexVectorType cell_sol) const
   {
     if(!is_assembled_)
       assemble();
@@ -152,61 +174,75 @@ public:
     externfctvalue *= -1.0;
     ConstFct constrhs(externfctvalue);
     typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
-    RhsFuncType rhsfunc(kappa_, constrhs);
+    RhsFuncType rhsfunc_real(kappa_real_, constrhs);
+    RhsFuncType rhsfunc_imag(kappa_imag_, constrhs);
     typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2grad< RhsFuncType > > L2gradOp;
-    L2gradOp l2gradop(rhsfunc);
-    LocalAssembler::Codim0Vector< L2gradOp > vectorassembler(l2gradop);
+    L2gradOp l2gradop1(rhsfunc_real);
+    L2gradOp l2gradop2(rhsfunc_imag);
+    LocalAssembler::Codim0Vector< L2gradOp > vectorassembler1(l2gradop1);
+    LocalAssembler::Codim0Vector< L2gradOp > vectorassembler2(l2gradop2);
 
     //assemble rhs
     SystemAssembler< SpaceType > walker(space_);
-    walker.add(vectorassembler, rhs_vector_);
+    walker.add(vectorassembler1, rhs_vector_real_);
+    walker.add(vectorassembler2, rhs_vector_imag_);
     walker.assemble();
 
+    std::complex< RangeFieldType > im(0.0, 1.0);
+    rhs_vector_total_.backend() = rhs_vector_imag_.backend().template cast< std::complex< RangeFieldType > >();
+    rhs_vector_total_.scal(im);
+    rhs_vector_total_.backend() += rhs_vector_real_.backend().template cast< std::complex< RangeFieldType > >();
+
     //solve
-    Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, cell_sol, "lu.sparse");
+    Stuff::LA::Solver< ComplexMatrixType > solver(system_matrix_total_);
+    solver.apply(rhs_vector_total_, cell_sol, "lu.sparse");
   }
 
-  Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
+  std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > > effective_matrix() const
   {
     auto unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
-    Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > ret;
+    std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > > ret(2);
     if(!is_assembled_)
       assemble();
     const auto averageparam = averageparameter();
     //prepare temporary storage
-    VectorType tmp_vector(space_.mapper().size());
-    std::vector< VectorType > reconstr(dimDomain, tmp_vector);
-    std::vector< VectorType > tmp_rhs;
+    ComplexVectorType tmp_vector(space_.mapper().size());
+    std::vector< ComplexVectorType > reconstr(dimDomain, tmp_vector);
+    std::vector< ComplexVectorType > tmp_rhs;
     //compute solutions of cell problems
     for (size_t ii =0; ii < dimDomain; ++ii) {
       reconstruct(unit_mat[ii], reconstr[ii]);
-      tmp_rhs.emplace_back(rhs_vector_);
-      tmp_rhs[ii].scal(-1.0); //necessary because rhs was -kappa*e_i and we want kappa*e_i
+      tmp_rhs.emplace_back(rhs_vector_total_);
+      tmp_rhs[ii].scal(std::complex< double >(-1.0)); //necessary because rhs was -kappa*e_i and we want kappa*e_i
     }
     //compute matrix
     for (size_t ii = 0; ii < dimDomain; ++ii) {
-      auto& retRow = ret[ii];
+      auto& retRow_real = ret[0][ii];
+      auto& retRow_imag = ret[1][ii];
+      Dune::FieldVector< std::complex< RangeFieldType >, dimDomain > retRow;
       for (size_t jj = 0; jj < dimDomain; ++jj) {
         retRow[jj] += averageparam * unit_mat[ii][jj];
         retRow[jj] += tmp_rhs[jj] * reconstr[ii];
         retRow[jj] += reconstr[jj] * tmp_rhs[ii]; //for complex, this has to be conjugated!
-        system_matrix_.mv(reconstr[ii], tmp_vector);
+        system_matrix_total_.mv(reconstr[ii], tmp_vector);
         retRow[jj] += reconstr[jj] * tmp_vector;
+        retRow_real[jj] += retRow[jj].real();
+        retRow_imag[jj] += retRow[jj].imag();
       }
     }
     return ret;
   } //effective_matrix()
 
-  const typename ScalarFct::RangeFieldType averageparameter() const
+  const std::complex< typename ScalarFct::RangeFieldType > averageparameter() const
   {
-    typename ScalarFct::RangeFieldType result(0.0);
+    std::complex< typename ScalarFct::RangeFieldType > result(0.0);
     const auto entity_it_end = space_.grid_view().template end<0>();
     //integrate
     for (auto entity_it = space_.grid_view().template begin<0>(); entity_it != entity_it_end; ++entity_it) {
       const auto& entity = *entity_it;
-      const auto localparam = kappa_.local_function(entity);
-      const size_t int_order = localparam->order();
+      const auto localparam_real = kappa_real_.local_function(entity);
+      const auto localparam_imag = kappa_imag_.local_function(entity);
+      const size_t int_order = localparam_real->order();  //we assume the real and imaginary part to have the same order atm
       //get quadrature rule
       typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
       typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
@@ -219,8 +255,11 @@ public:
         const double integration_factor = entity.geometry().integrationElement(x);
         const double quadrature_weight = quadPointIt->weight();
         //evaluate
-        const auto evaluation_result = localparam->evaluate(x);
-        result += evaluation_result * quadrature_weight * integration_factor;
+        const auto evaluation_result_real = localparam_real->evaluate(x);
+        const auto evaluation_result_imag = localparam_imag->evaluate(x);
+        const auto resultreal = evaluation_result_real[0] * quadrature_weight * integration_factor;
+        const auto resultimag = evaluation_result_imag[0] * quadrature_weight * integration_factor;
+        result += std::complex< double >(resultreal, resultimag);
       } //loop over quadrature points
     } //loop over entities
     return result;
@@ -228,10 +267,15 @@ public:
 
 private:
   const SpaceType    space_;
-  const ScalarFct&   kappa_;
+  const ScalarFct&   kappa_real_;
+  const ScalarFct&   kappa_imag_;
   mutable bool       is_assembled_;
-  mutable MatrixType system_matrix_;
-  mutable VectorType rhs_vector_;
+  mutable MatrixType system_matrix_real_;
+  mutable MatrixType system_matrix_imag_;
+  mutable ComplexMatrixType system_matrix_total_;
+  mutable VectorType    rhs_vector_real_;
+  mutable VectorType    rhs_vector_imag_;
+  mutable ComplexVectorType rhs_vector_total_;
 }; //class Cell<... ChoosecellProblem::Elliptic >
 
 
