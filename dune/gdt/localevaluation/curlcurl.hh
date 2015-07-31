@@ -29,7 +29,6 @@ namespace internal {
 
 /**
  * \brief Traits for the CurlCurl evaluation
- * \note only implemented for scalar parameter functions at the moment
 */
 template< class ParamFunctionType >
 class CurlCurlTraits
