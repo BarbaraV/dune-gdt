@@ -454,7 +454,7 @@ private:
   mutable std::vector< JacobianRangeType > tmp_jacobian_ranges_;
 }; // class PiolaTransformedPdelabWrapper
 
-//new
+
 /** \brief Wrapper-class for the Hcurl-confroming transformation, e.g. for member functions of the Nedelec spaces
  *
  * \note As the curl is only defined in dimension 3, the domainDim and the rangeDim have to equal 3
@@ -542,16 +542,6 @@ public:
     assert(ret.size() >= backend_->size());
     backend_->evaluateFunction(xx, ret);
     //evaluateFunction for edges05 already gives the value on the element and not in the reference configuration, so no mapping here
-    /*assert(lfs_);
-    assert(backend_);
-    assert(tmp_ranges_.size() >= backend_->size());
-    assert(ret.size() >= backend_->size());
-    backend_->evaluateFunction(xx, tmp_ranges_);
-    const auto geometry = this->entity().geometry();
-    tmp_jacobian_inverse_transposed_ = geometry.jacobianInverseTransposed(xx);
-    for (size_t ii = 0; ii < backend_->size(); ++ii) {
-      tmp_jacobian_inverse_transposed_.mv(tmp_ranges_[ii], ret[ii]);  //stimmt das?
-    }*/
   } // ... evaluate(...)
 
   using BaseType::evaluate;
@@ -562,19 +552,7 @@ public:
     assert(backend_);
     assert(ret.size() >= backend_->size());
     backend_->evaluateJacobian(xx, ret);
-   /* assert(lfs_);
-    assert(backend_);
-    assert(ret.size() >= backend_->size());
-    backend_->evaluateJacobian(xx, tmp_jacobian_ranges_);
-    const auto geometry = this->entity().geometry();
-    tmp_jacobian_transposed_ = geometry.jacobianTransposed(xx);
-    const DomainFieldType integration_element = geometry.integrationElement(xx);
-    for (size_t ii = 0; ii < backend_->size(); ++ii) {
-      for (size_t jj = 0; jj < dimDomain; ++jj) {
-        tmp_jacobian_transposed_.mtv(tmp_jacobian_ranges_[ii][jj], ret[ii][jj]);
-        ret[ii][jj] /= integration_element;    //stimmt das?
-      }
-    } */
+    //again, evaluateJacobian for edge05 already gives the value on the local element and not on the reference element, so no mapping
   } // ... jacobian(...)
 
   using BaseType::jacobian;
