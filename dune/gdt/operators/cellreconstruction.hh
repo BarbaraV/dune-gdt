@@ -48,7 +48,9 @@ class Cell;
 
 namespace internal {
 
-
+/**
+ * \brief Traits for cell problems
+ */
 template< class GridViewImp, int polynomialOrder >
 class CellTraits
 {
@@ -71,7 +73,11 @@ public:
 
 } //namespace internal
 
-
+/**
+ * \brief Class for an elliptic cell problem of the form \int param*(vector+\nabla ansatzfct)*\nabla testfct = 0
+ * \tparam GridViewImp GridViewType for the grid of the unit (hyper)cube
+ * \tparam polynomialorder polynomial order of the lagrange finite element space to use
+ */
 template< class GridViewImp, int polynomialOrder >
 class Cell< GridViewImp, polynomialOrder, ChooseCellProblem::Elliptic >
 {
@@ -114,6 +120,10 @@ public:
     return VectorType(space_.mapper().size());
   }
 
+  /**
+   * @brief assemble assembles the system matrix of the problem
+   * @note the right hand side is assmebled in reconstruct as in can change while the cell problem stays the same
+   */
   void assemble() const
   {
     using namespace Dune;
@@ -164,6 +174,12 @@ public:
     return rhs_vector_total_;
   }
 
+  /**
+   * @brief computes the solution of the cell problem for a given vector
+   * @note the given vector mostly is an evaluation of macroscopic (shape) functions and
+   * the solution vector gives the coefficients of the thus reconstructed discrete function
+   * \tparam RhsVectorType the type of the vector to be given
+   */
   template< class RhsVectorType >
   void reconstruct(RhsVectorType& externfctvalue, ComplexVectorType cell_sol) const
   {
@@ -196,8 +212,12 @@ public:
     //solve
     Stuff::LA::Solver< ComplexMatrixType > solver(system_matrix_total_);
     solver.apply(rhs_vector_total_, cell_sol, "lu.sparse");
-  }
+  } //reconstruct
 
+  /**
+   * @brief effective_matrix compyutes the effective (or homogenized) matrix corresponding to the microscopic paramter kappa_
+   * @return a 2-vector of matrices which gives the real and imaginary part of the effective matrix
+   */
   std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > > effective_matrix() const
   {
     auto unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
@@ -233,6 +253,10 @@ public:
     return ret;
   } //effective_matrix()
 
+  /**
+   * @brief averageparameter averages the paramter function over the unit cube
+   * @return  the average of kappa_
+   */
   const std::complex< typename ScalarFct::RangeFieldType > averageparameter() const
   {
     std::complex< typename ScalarFct::RangeFieldType > result(0.0);
@@ -263,7 +287,7 @@ public:
       } //loop over quadrature points
     } //loop over entities
     return result;
-  }
+  } //averageparameter
 
 private:
   const SpaceType           space_;
@@ -279,6 +303,11 @@ private:
 }; //class Cell<... ChoosecellProblem::Elliptic >
 
 
+/**
+ * \brief Class for a curlcurl cellproblem with divergence regularization
+ * the problem has the type \int param*(vector+curl\ansatz)*\curl test + \div ansatz * \div test = 0
+ * \sa Cell< GridViewImp, polynomialOrder, ChooseCellProblem::Elliptic > for explanation of template parameters
+ */
 template< class GridViewImp, int polynomialOrder >
 class Cell< GridViewImp, polynomialOrder, ChooseCellProblem::CurlcurlDivreg >
 {
@@ -319,6 +348,9 @@ public:
     return VectorType(space_.mapper().size());
   }
 
+  /**
+   * @brief assemble assmebles the system matrix of this problem
+   */
   void assemble() const
   {
     using namespace Dune;
@@ -360,6 +392,10 @@ public:
     return rhs_vector_;
   }
 
+  /**
+   * \brief computes the solution of the cell problem for given VectorType
+   * \tparam RhsVectorType the type of vector to be given
+   */
   template< class RhsVectorType >
   void reconstruct(RhsVectorType& externfctvalue, VectorType cell_sol) const
   {
@@ -383,8 +419,12 @@ public:
     //solve
     Stuff::LA::Solver< MatrixType > solver(system_matrix_);
     solver.apply(rhs_vector_, cell_sol, "lu.sparse");
-  }
+  } //reconstruct
 
+  /**
+   * @brief effective_matrix compy=utes the effective (homogenized) matrix
+   * @return  the effective_matrix corresponding to the parameter mu_
+   */
   Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
   {
     auto unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
@@ -416,6 +456,10 @@ public:
     return ret;
   } //effective_matrix()
 
+  /**
+   * @brief averageparameter averages mu_ over the unit cube
+   * @return average of mu_ over the unit cube
+   */
   const typename ScalarFct::RangeFieldType averageparameter() const
   {
     typename ScalarFct::RangeFieldType result(0.0);
@@ -442,7 +486,7 @@ public:
       } //loop over quadrature points
     } //loop over entities
     return result;
-  }
+  } //averageparameter
 
 private:
   const SpaceType    space_;
