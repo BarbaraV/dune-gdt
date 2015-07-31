@@ -156,7 +156,7 @@ class ContinuousPowerPdelabWrapper
 public:
   typedef typename internal::ContinuousPdelabWrapperTraits< PdelabSpaceImp > Traits;
   typedef typename Traits::EntityType                                        EntityType;
-  static const                                                               size_t dimRange = PdelabSpaceImp::Traits::CHILDREN;
+  static const size_t                                                        dimRange = PdelabSpaceImp::Traits::CHILDREN;
 
   template< class... Args >
   ContinuousPowerPdelabWrapper(Args&& ...args)
