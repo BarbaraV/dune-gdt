@@ -28,7 +28,7 @@
 #include <dune/gdt/spaces/cg/pdelab.hh>
 #include <dune/gdt/localevaluation/elliptic.hh>
 #include <dune/gdt/localevaluation/curlcurl.hh>
-#include <dune/gdt/localevaluation/divdiv.hh>           // koennte auch noch divdiv-operator schreiben um tw. Konstruktionen zu verkuerzen
+#include <dune/gdt/localevaluation/divdiv.hh>
 #include <dune/gdt/localevaluation/product-l2deriv.hh>
 #include <dune/gdt/localoperator/codim0.hh>
 #include <dune/gdt/assembler/system.hh>
@@ -58,8 +58,8 @@ public:
   typedef typename GridViewType::ctype                         DomainFieldType;
   static const size_t                                          dimDomain = GridViewType::dimension;
 
-  static const unsigned int polOrder = polynomialOrder;
-  typedef double            RangeFieldType;
+  static const unsigned int              polOrder = polynomialOrder;
+  typedef double                         RangeFieldType;
   typedef std::complex< RangeFieldType > complextype;
 
   typedef Dune::Stuff::LA::Container< RangeFieldType, Dune::Stuff::LA::ChooseBackend::eigen_sparse >::MatrixType MatrixType;
@@ -77,19 +77,19 @@ class Cell< GridViewImp, polynomialOrder, ChooseCellProblem::Elliptic >
 {
 public:
   typedef internal::CellTraits< GridViewImp, polynomialOrder> Traits;
-  typedef typename Traits::EntityType EntityType;
-  typedef typename Traits::DomainFieldType DomainFieldType;
-  typedef typename Traits::RangeFieldType RangeFieldType;
-  typedef typename Traits::MatrixType MatrixType;
-  typedef typename Traits::VectorType VectorType;
-  typedef typename Traits::ComplexMatrixType ComplexMatrixType;
-  typedef typename Traits::ComplexVectorType ComplexVectorType;
+  typedef typename Traits::EntityType                         EntityType;
+  typedef typename Traits::DomainFieldType                    DomainFieldType;
+  typedef typename Traits::RangeFieldType                     RangeFieldType;
+  typedef typename Traits::MatrixType                         MatrixType;
+  typedef typename Traits::VectorType                         VectorType;
+  typedef typename Traits::ComplexMatrixType                  ComplexMatrixType;
+  typedef typename Traits::ComplexVectorType                  ComplexVectorType;
 
   static const size_t       dimDomain = Traits::dimDomain;
   static const unsigned int polOrder = Traits::polOrder;
 
   typedef Dune::Stuff::LocalizableFunctionInterface< EntityType, DomainFieldType, dimDomain, RangeFieldType, 1 > ScalarFct;
-  typedef Dune::GDT::Spaces::CG::PdelabBased< GridViewImp, 1, RangeFieldType, 1 > SpaceType;
+  typedef Dune::GDT::Spaces::CG::PdelabBased< GridViewImp, 1, RangeFieldType, 1 >                                SpaceType;
 
   Cell(const GridViewImp& gridview, const ScalarFct& kappa_real, const ScalarFct& kappa_imag)
     : space_(gridview)
@@ -266,15 +266,15 @@ public:
   }
 
 private:
-  const SpaceType    space_;
-  const ScalarFct&   kappa_real_;
-  const ScalarFct&   kappa_imag_;
-  mutable bool       is_assembled_;
-  mutable MatrixType system_matrix_real_;
-  mutable MatrixType system_matrix_imag_;
+  const SpaceType           space_;
+  const ScalarFct&          kappa_real_;
+  const ScalarFct&          kappa_imag_;
+  mutable bool              is_assembled_;
+  mutable MatrixType        system_matrix_real_;
+  mutable MatrixType        system_matrix_imag_;
   mutable ComplexMatrixType system_matrix_total_;
-  mutable VectorType    rhs_vector_real_;
-  mutable VectorType    rhs_vector_imag_;
+  mutable VectorType        rhs_vector_real_;
+  mutable VectorType        rhs_vector_imag_;
   mutable ComplexVectorType rhs_vector_total_;
 }; //class Cell<... ChoosecellProblem::Elliptic >
 
@@ -284,11 +284,11 @@ class Cell< GridViewImp, polynomialOrder, ChooseCellProblem::CurlcurlDivreg >
 {
 public:
   typedef internal::CellTraits< GridViewImp, polynomialOrder> Traits;
-  typedef typename Traits::EntityType EntityType;
-  typedef typename Traits::DomainFieldType DomainFieldType;
-  typedef typename Traits::RangeFieldType RangeFieldType;
-  typedef typename Traits::MatrixType MatrixType;
-  typedef typename Traits::VectorType VectorType;
+  typedef typename Traits::EntityType                         EntityType;
+  typedef typename Traits::DomainFieldType                    DomainFieldType;
+  typedef typename Traits::RangeFieldType                     RangeFieldType;
+  typedef typename Traits::MatrixType                         MatrixType;
+  typedef typename Traits::VectorType                         VectorType;
 
   static const size_t       dimDomain = Traits::dimDomain;
   static const size_t       dimRange = dimDomain;
@@ -297,7 +297,7 @@ public:
   static_assert(dimDomain == 3, "This cell problem is only defined in 3d");
 
   typedef Dune::Stuff::LocalizableFunctionInterface< EntityType, DomainFieldType, dimDomain, RangeFieldType, 1 > ScalarFct;
-  typedef Dune::GDT::Spaces::CG::PdelabBased< GridViewImp, 1, RangeFieldType, dimRange, 1 > SpaceType;
+  typedef Dune::GDT::Spaces::CG::PdelabBased< GridViewImp, 1, RangeFieldType, dimRange, 1 >                      SpaceType;
 
   Cell(const GridViewImp& gridview, const ScalarFct& mu,
        const ScalarFct& divparam = Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, RangeFieldType, 1>(1.0))
