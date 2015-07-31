@@ -71,14 +71,14 @@ public:
 
 
 /**
- *  \brief  Computes a product evaluation between a vector valued local l2 function and the gradientss of a test space.
+ *  \brief  Computes a product evaluation between a vector valued local l2 function and the gradients of a test space.
  */
 template< class LocalizableFunctionImp >
 class L2grad
   : public LocalEvaluation::Codim0Interface< internal::L2gradTraits< LocalizableFunctionImp >, 1 >
 {
 public:
-  typedef internal::L2gradTraits< LocalizableFunctionImp > Traits;
+  typedef internal::L2gradTraits< LocalizableFunctionImp >  Traits;
   typedef typename Traits::LocalizableFunctionType          LocalizableFunctionType;
   typedef typename Traits::LocalfunctionTupleType           LocalfunctionTupleType;
   typedef typename Traits::EntityType                       EntityType;
@@ -185,7 +185,7 @@ class L2curl
   : public LocalEvaluation::Codim0Interface< internal::L2curlTraits< LocalizableFunctionImp >, 1 >
 {
 public:
-  typedef internal::L2curlTraits< LocalizableFunctionImp > Traits;
+  typedef internal::L2curlTraits< LocalizableFunctionImp >  Traits;
   typedef typename Traits::LocalizableFunctionType          LocalizableFunctionType;
   typedef typename Traits::LocalfunctionTupleType           LocalfunctionTupleType;
   typedef typename Traits::EntityType                       EntityType;
