@@ -251,10 +251,10 @@ class PdelabWrapper< PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, Rang
       BaseType;
 public:
   typedef internal::PdelabWrapperTraits< PdelabSpaceType, EntityImp, DomainFieldImp, domainDim, RangeFieldImp, rangeDim, 1 > Traits;
-  typedef typename Traits::BackendType   BackendType;
-  typedef typename BackendType::Traits::RangeType ScalarRangeType;
+  typedef typename Traits::BackendType               BackendType;
+  typedef typename BackendType::Traits::RangeType    ScalarRangeType;
   typedef typename BackendType::Traits::JacobianType ScalarJacobianType;
-  typedef typename Traits::EntityType    EntityType;
+  typedef typename Traits::EntityType                EntityType;
 private:
   typedef typename Traits::PdelabLFSType PdelabLFSType;
   typedef typename Traits::FESwitchType  FESwitchType;
