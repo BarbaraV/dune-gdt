@@ -103,21 +103,9 @@ public:
     typedef PDELab::GridFunctionSpace< GridViewType, FEMapType, PDELab::OverlappingConformingDirichletConstraints > Type;
     typedef Mapper::ContinuousPdelabWrapper< Type > MapType;
   };
-  typedef typename BackendMapper< GridType, rangeDim >::Type BackendType;
+  typedef typename BackendMapper< GridType, rangeDim >::Type    BackendType;
   typedef typename BackendMapper< GridType, rangeDim >::MapType MapperType;
-  typedef typename GridViewType::template Codim< 0 >::Entity EntityType;
- /* template< class G, size_t dimRange >
-  struct BasefunctionSet
-  {
-    typedef BaseFunctionSet::PdelabWrapper< PDELab::GridFunctionSpace< GridViewType, FEMapType, PDELab::OverlappingConformingDirichletConstraints >,
-                                            EntityType, DomainFieldType, dimDomain, RangeFieldType, dimRange, rangeDimCols > Type;
-  };
-  template< class G >
-  struct BasefunctionSet< G, 1 >
-  {
-    typedef BaseFunctionSet::PdelabWrapper< BackendType, EntityType, DomainFieldType, dimDomain, RangeFieldType, 1, rangeDimCols > Type;
-  };
-  typedef typename BasefunctionSet< GridType, rangeDim >::Type BaseFunctionSetType;*/
+  typedef typename GridViewType::template Codim< 0 >::Entity    EntityType;
   typedef BaseFunctionSet::PdelabWrapper< BackendType, EntityType, DomainFieldType, dimDomain, RangeFieldType, rangeDim, rangeDimCols > BaseFunctionSetType;
   static const Stuff::Grid::ChoosePartView part_view_type = Stuff::Grid::ChoosePartView::view;
   static const bool needs_grid_view = true;
