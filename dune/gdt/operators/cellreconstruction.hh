@@ -181,17 +181,18 @@ public:
    * \tparam RhsVectorType the type of the vector to be given
    */
   template< class RhsVectorType >
-  void reconstruct(RhsVectorType& externfctvalue, ComplexVectorType cell_sol) const
+  void reconstruct(RhsVectorType& externfctvalue, ComplexVectorType& cell_sol) const
   {
     if(!is_assembled_)
       assemble();
     // set up rhs
     typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, typename RhsVectorType::field_type, dimDomain > ConstFct;
-    externfctvalue *= -1.0;
-    ConstFct constrhs(externfctvalue);
+    auto externfctvalue1 = externfctvalue;
+    externfctvalue1 *= -1.0;
+    const ConstFct constrhs(externfctvalue1);
     typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
-    RhsFuncType rhsfunc_real(kappa_real_, constrhs);
-    RhsFuncType rhsfunc_imag(kappa_imag_, constrhs);
+    const RhsFuncType rhsfunc_real(kappa_real_, constrhs);
+    const RhsFuncType rhsfunc_imag(kappa_imag_, constrhs);
     typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2grad< RhsFuncType > > L2gradOp;
     L2gradOp l2gradop1(rhsfunc_real);
     L2gradOp l2gradop2(rhsfunc_imag);
@@ -215,7 +216,7 @@ public:
   } //reconstruct
 
   /**
-   * @brief effective_matrix compyutes the effective (or homogenized) matrix corresponding to the microscopic paramter kappa_
+   * @brief effective_matrix computes the effective (or homogenized) matrix corresponding to the microscopic parameter kappa_
    * @return a 2-vector of matrices which gives the real and imaginary part of the effective matrix
    */
   std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > > effective_matrix() const
@@ -231,9 +232,11 @@ public:
     std::vector< ComplexVectorType > tmp_rhs;
     //compute solutions of cell problems
     for (size_t ii =0; ii < dimDomain; ++ii) {
+      //clear rhs_vector
+      rhs_vector_total_.scal(std::complex< double >(0.0, 0.0));
       reconstruct(unit_mat[ii], reconstr[ii]);
       tmp_rhs.emplace_back(rhs_vector_total_);
-      tmp_rhs[ii].scal(std::complex< double >(-1.0)); //necessary because rhs was -kappa*e_i and we want kappa*e_i
+      tmp_rhs[ii].scal(std::complex< double >(-1.0, 0.0)); //necessary because rhs was -kappa*e_i and we want kappa*e_i
     }
     //compute matrix
     for (size_t ii = 0; ii < dimDomain; ++ii) {
@@ -397,16 +400,17 @@ public:
    * \tparam RhsVectorType the type of vector to be given
    */
   template< class RhsVectorType >
-  void reconstruct(RhsVectorType& externfctvalue, VectorType cell_sol) const
+  void reconstruct(RhsVectorType& externfctvalue, VectorType& cell_sol) const
   {
     if(!is_assembled_)
       assemble();
     // set up rhs
     typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, typename RhsVectorType::field_type, dimDomain > ConstFct;
-    externfctvalue *= -1.0;
-    ConstFct constrhs(externfctvalue);
+    auto externfctvalue1 = externfctvalue;
+    externfctvalue1 *= -1.0;
+    const ConstFct constrhs(externfctvalue1);
     typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
-    RhsFuncType rhsfunc(mu_, constrhs);
+    const RhsFuncType rhsfunc(mu_, constrhs);
     typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2curl< RhsFuncType > > L2curlOp;
     L2curlOp l2curlop(rhsfunc);
     LocalAssembler::Codim0Vector< L2curlOp > vectorassembler(l2curlop);
@@ -422,7 +426,7 @@ public:
   } //reconstruct
 
   /**
-   * @brief effective_matrix compy=utes the effective (homogenized) matrix
+   * @brief effective_matrix computes the effective (homogenized) matrix
    * @return  the effective_matrix corresponding to the parameter mu_
    */
   Dune::FieldMatrix< DomainFieldType, dimDomain, dimDomain > effective_matrix() const
@@ -438,6 +442,8 @@ public:
     std::vector< VectorType > tmp_rhs;
     //compute solutions of cell problems
     for (size_t ii =0; ii < dimDomain; ++ii) {
+      //clear rhs vector
+      rhs_vector_.scal(0.0);
       reconstruct(unit_mat[ii], reconstr[ii]);
       tmp_rhs.emplace_back(rhs_vector_);
       tmp_rhs[ii].scal(-1.0); //necessary because rhs was -mu*e_i and we want mu*e_i

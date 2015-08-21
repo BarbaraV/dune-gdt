@@ -134,8 +134,9 @@ public:
       curlcell.assemble();
       ellipticcell.assemble();
       auto effective_mu = curlcell.effective_matrix();
-      auto effective_kappa_real = ellipticcell.effective_matrix()[0];
-      auto effective_kappa_imag = ellipticcell.effective_matrix()[0];
+      auto effective_kappa = ellipticcell.effective_matrix();
+      auto effective_kappa_real = effective_kappa[0];
+      auto effective_kappa_imag = effective_kappa[1];
       //the effective matrices have to be cast into constant macro functions
       typedef Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimDomain, dimDomain > MatrixFct;
       MatrixFct eff_mu_fct(effective_mu);
