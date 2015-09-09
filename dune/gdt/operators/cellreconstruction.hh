@@ -766,6 +766,229 @@ private:
 }; //class Cell<... ChoosecellProblem::CurlcurlDivreg >
 
 
+/**
+ * \brief Class for a curlcurl cell problem of the form \int param*(vector+\curl ansatzfct)*\curl testfct +\div ansatzfct * \div testfct = 0
+ * \tparam GridPartImp GridPartType for the grid partition of the unit (hyper)cube
+ * \tparam polynomialorder polynomial order of the lagrange finite element space to use
+ */
+template< class GridPartImp, int polynomialOrder >
+class FemCurlCell
+{
+public:
+  typedef GridPartImp GridPartType;
+  typedef typename GridPartType::GridViewType GridViewType;
+  typedef typename GridPartType::template Codim< 0 >::EntityType EntityType;
+  typedef typename GridPartType::ctype DomainFieldType;
+  typedef double                   RangeFieldType;
+
+  typedef Dune::Stuff::LA::Container< RangeFieldType, Dune::Stuff::LA::ChooseBackend::eigen_sparse >::MatrixType MatrixType;
+  typedef Dune::Stuff::LA::Container< RangeFieldType, Dune::Stuff::LA::ChooseBackend::eigen_sparse >::VectorType VectorType;
+
+  static const size_t       dimDomain = GridViewType::dimension;
+  static const size_t dimRange = dimDomain;
+  static const unsigned int polOrder = polynomialOrder;
+
+  typedef Dune::Stuff::LocalizableFunctionInterface< EntityType, DomainFieldType, dimDomain, RangeFieldType, 1 > ScalarFct;
+  typedef Dune::GDT::Spaces::CG::FemBased< GridPartImp, 1, RangeFieldType, dimRange >                                SpaceType;
+
+  FemCurlCell(const GridPartImp& gridpart, const ScalarFct& mu,
+              const ScalarFct& divparam = Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, RangeFieldType, 1>(1.0))
+    : space_(gridpart)
+    , mu_(mu)
+    , div_param_(divparam)
+    , is_assembled_(false)
+    , system_matrix_(0,0)
+    , rhs_vector_(0)
+  {}
+
+  const SpaceType& space() const
+  {
+    return space_;
+  }
+
+  VectorType create_vector() const
+  {
+    return VectorType(space_.mapper().size());
+  }
+
+  /**
+   * @brief assemble assembles the system matrix of the problem
+   * @note the right hand side is assembled in reconstruct as in can change while the cell problem stays the same
+   */
+  void assemble() const
+  {
+    using namespace Dune;
+    using namespace Dune::GDT;
+    if(!is_assembled_) {
+      //prepare
+      Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_volume_pattern();
+      system_matrix_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
+      rhs_vector_ = VectorType(space_.mapper().size());
+      SystemAssembler< SpaceType > walker(space_);
+
+      //lhs
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< ScalarFct > > CurlOp;
+      CurlOp curlop(mu_);
+      LocalAssembler::Codim0Matrix< CurlOp > matrixassembler1(curlop);
+      walker.add(matrixassembler1, system_matrix_);
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::Divdiv< ScalarFct > > DivOp;
+      DivOp divop(div_param_);
+      LocalAssembler::Codim0Matrix< DivOp > matrixassembler2(divop);
+      walker.add(matrixassembler2, system_matrix_);
+      //maybe add an identity term for stabilization
+
+      walker.assemble();
+      is_assembled_ = true;
+    }
+  } //assemble
+
+  bool is_assembled() const
+  {
+    return is_assembled_;
+  }
+
+  const MatrixType& system_matrix() const
+  {
+    return system_matrix_;
+  }
+
+  const VectorType& rhs_vector() const
+  {
+    return rhs_vector_;
+  }
+
+  /**
+   * @brief computes the solution of the cell problem for a given vector
+   * @note the given vector mostly is an evaluation of macroscopic (shape) functions and
+   * the solution vector gives the coefficients of the thus reconstructed discrete function
+   * \tparam RhsVectorType the type of the vector to be given
+   */
+  template< class RhsVectorType >
+  void reconstruct(RhsVectorType& externfctvalue, VectorType& cell_sol) const
+  {
+    if(!is_assembled_)
+      assemble();
+    //clear rhs for case that a reconstruction has been computed before
+    rhs_vector_.scal(0.0);
+    // set up rhs
+    typedef Stuff::Functions::Constant< EntityType, DomainFieldType, dimDomain, typename RhsVectorType::field_type, dimDomain > ConstFct;
+    auto externfctvalue1 = externfctvalue;
+    externfctvalue1 *= -1.0;
+    const ConstFct constrhs(externfctvalue1);
+    typedef Stuff::Functions::Product< ScalarFct, ConstFct > RhsFuncType;
+    const RhsFuncType rhsfunc(mu_, constrhs);
+    typedef LocalFunctional::Codim0Integral< LocalEvaluation::L2curl< RhsFuncType > > L2curlOp;
+    L2curlOp l2curlop(rhsfunc);
+    LocalAssembler::Codim0Vector< L2curlOp > vectorassembler(l2curlop);
+
+    //assemble rhs
+    SystemAssembler< SpaceType > walker(space_);
+    walker.add(vectorassembler, rhs_vector_);
+    walker.assemble();
+
+    //solve
+    Stuff::LA::Solver< MatrixType > solver(system_matrix_);
+    solver.apply(rhs_vector_, cell_sol, "lu.sparse");
+
+    //compute average over cube
+    Dune::GDT::ConstDiscreteFunction< SpaceType, VectorType > cell_sol_discr(space_, cell_sol);
+    auto cell_average = average(cell_sol_discr);
+    for (size_t ii =0; ii < dimRange; ++ii) {
+      VectorType cell_average_vector(space_.mapper().size()/dimRange, cell_average[ii]);
+      cell_sol.backend().middleRows(ii * space_.mapper().size()/dimRange, space_.mapper().size()/dimRange) -= cell_average_vector.backend();
+    }
+
+  } //reconstruct
+
+  /**
+   * @brief effective_matrix computes the effective (or homogenized) matrix corresponding to the microscopic parameter kappa_
+   * @return a 2-vector of matrices which gives the real and imaginary part of the effective matrix
+   */
+  std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > > effective_matrix() const
+  {
+    auto unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
+    Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain >  ret;
+    if(!is_assembled_)
+      assemble();
+    const auto averageparam = averageparameter();
+    //prepare temporary storage
+    VectorType tmp_vector(space_.mapper().size());
+    std::vector< VectorType > reconstr(dimDomain, tmp_vector);
+    std::vector< VectorType > tmp_rhs;
+    //compute solutions of cell problems
+    for (size_t ii =0; ii < dimDomain; ++ii) {
+      reconstruct(unit_mat[ii], reconstr[ii]);
+      tmp_rhs.emplace_back(rhs_vector());
+      tmp_rhs[ii].scal(-1.0); //necessary because rhs was -mu*e_i and we want mu*e_i
+    }
+    //compute matrix
+    for (size_t ii = 0; ii < dimDomain; ++ii) {
+      auto& retRow = ret[ii];
+      for (size_t jj = 0; jj < dimDomain; ++jj) {
+        retRow[jj] += averageparam * unit_mat[ii][jj];
+        retRow[jj] += tmp_rhs[ii].dot(reconstr[jj]);
+      }
+    }
+    return ret;
+  } //effective_matrix()
+
+  /**
+   * @brief averageparameter averages the parameter function over the unit cube
+   * @return  the average of mu_
+   */
+  const typename ScalarFct::RangeFieldType averageparameter() const
+  {
+    typename ScalarFct::RangeFieldType result(0.0);
+    result = average(mu_);
+    return result;
+  } //averageparameter
+
+  /**
+   * @brief average averages a scalar complex function over the unit cube
+   * @param function_real real part of the function
+   * @param function_imag imaginary part of the function
+   * @return  the average of function_real+i*function_imag
+   */
+  template< class FunctionType >
+  typename FunctionType::RangeType average(FunctionType& function) const
+  {
+    typename FunctionType::RangeType result(0.0);
+    const auto entity_it_end = space_.grid_view().template end<0>();
+    //integrate
+    for (auto entity_it = space_.grid_view().template begin<0>(); entity_it != entity_it_end; ++entity_it) {
+      const auto& entity = *entity_it;
+      const auto localparam = function.local_function(entity);
+      const size_t int_order = localparam->order();
+      //get quadrature rule
+      typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+      typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+      const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(int_order));
+      //loop over all quadrature points
+      const auto quadPointEndIt = volumeQuadrature.end();
+      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
+        const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+        //intergation factors
+        const double integration_factor = entity.geometry().integrationElement(x);
+        const double quadrature_weight = quadPointIt->weight();
+        //evaluate
+        auto evaluation_result = localparam->evaluate(x);
+        evaluation_result *= (quadrature_weight * integration_factor);
+        result += evaluation_result;
+      } //loop over quadrature points
+    } //loop over entities
+    return result;
+  } //average
+
+private:
+  const SpaceType           space_;
+  const ScalarFct&          mu_;
+  const ScalarFct&          div_param_;
+  mutable bool              is_assembled_;
+  mutable MatrixType        system_matrix_;
+  mutable VectorType        rhs_vector_;
+}; //class FemCurlCell
+
+
 } //namespace Operators
 } //namespace GDT
 } //namespace Dune
