@@ -28,27 +28,46 @@
 #include <dune/stuff/functions/constant.hh>
 
 #include <dune/gdt/spaces/nedelec/pdelab.hh>
-#include <dune/gdt/localevaluation/hmm.hh>
+//#include <dune/gdt/localevaluation/hmm.hh>
 #include <dune/gdt/localoperator/codim0.hh>
 #include <dune/gdt/operators/curlcurl.hh>
+#include <dune/gdt/operators/cellreconstruction.hh>
 #include <dune/gdt/assembler/local/codim0.hh>
 #include <dune/gdt/assembler/system.hh>
 #include <dune/gdt/functionals/l2.hh>
 #include <dune/gdt/spaces/constraints.hh>
 
-template< class MacroGridViewType, class CellGridViewType, int polynomialOrder >
+template< class MacroGridViewType, class CellGridPartType, int polynomialOrder, class MacroParamImp = void >
 class HMMDiscretization
 {
 public:
-  typedef typename MacroGridViewType::ctype                     MacroDomainFieldType;
-  typedef typename MacroGridViewType::template Codim<0>::Entity MacroEntityType;
-  static const size_t                                           dimDomain = MacroGridViewType::dimension;
-  static const size_t                                           dimRange = dimDomain;
-  static const unsigned int                                     polOrder = polynomialOrder;
+  typedef typename MacroGridViewType::ctype                                   MacroDomainFieldType;
+  typedef typename MacroGridViewType::template Codim<0>::Entity               MacroEntityType;
+  typedef typename CellGridPartType::ctype                                    CellDomainFieldType;
+  typedef typename CellGridPartType::GridViewType::template Codim<0>::Entity  CellEntityType;
+  static const size_t       dimDomain = MacroGridViewType::dimension;
+  static const size_t       dimRange = dimDomain;
+  static const unsigned int polOrder = polynomialOrder;
 
   typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename MacroGridViewType::Intersection >                            BoundaryInfoType;
-  typedef Dune::Stuff::LocalizableFunctionInterface< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimRange > Vectorfct;
-  typedef Dune::Stuff::LocalizableFunctionInterface< MacroEntityType, MacroDomainFieldType, dimDomain, double, 1 >        ScalarFct;
+  typedef Dune::Stuff::LocalizableFunctionInterface< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimRange > MacroVectorfct;
+  typedef Dune::Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, 1 >                 MacroConstFct;
+  typedef Dune::Stuff::LocalizableFunctionInterface< CellEntityType, CellDomainFieldType, dimDomain, double, 1 >          CellScalarFct;
+  typedef Dune::Stuff::Functions::Constant< CellEntityType, CellDomainFieldType, dimDomain, double, 1 >                   CellConstFct;
+
+private:
+  template< class MacroParamType, bool anything = true >
+  struct Helper {
+    typedef MacroParamType Type;
+  };
+
+  template< bool anything >
+  struct Helper< void, anything > {
+    typedef Dune::Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, 1 > Type;
+  };
+
+public:
+  typedef typename Helper< MacroParamImp, true >::Type MacroScalarFct;
 
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType MatrixType;
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType VectorType;
@@ -57,24 +76,30 @@ public:
 
   typedef Dune::GDT::Spaces::Nedelec::PdelabBased< MacroGridViewType, polOrder, double, dimRange > SpaceType;
 
-  typedef Dune::GDT::ConstDiscreteFunction < SpaceType, VectorType > ConstDiscreteFunctionType;
+  typedef Dune::GDT::ConstDiscreteFunction< SpaceType, VectorType > ConstDiscreteFunctionType;
 
 
   HMMDiscretization(const MacroGridViewType& macrogridview,
-                    const CellGridViewType& cellgridview,
+                    const CellGridPartType& cellgridpart,
                     const BoundaryInfoType& info,
-                    const ScalarFct& mu,
-                    const ScalarFct& kappa_real,
-                    const ScalarFct& kappa_imag,
-                    const Vectorfct& source_real,
-                    const Vectorfct& source_imag,
-                    const ScalarFct& divparam)
+                    const CellScalarFct& mu,
+                    const CellScalarFct& kappa_real,
+                    const CellScalarFct& kappa_imag,
+                    const MacroVectorfct& source_real,
+                    const MacroVectorfct& source_imag,
+                    const CellScalarFct& divparam,// = CellConstFct(1.0),
+                    const MacroScalarFct& mu_macro = MacroConstFct(1.0),
+                    const MacroScalarFct& kappa_real_macro = MacroConstFct(1.0),
+                    const MacroScalarFct& kappa_imag_macro = MacroConstFct(1.0))
     : space_(macrogridview)
-    , cellgridview_(cellgridview)
+    , cellgridpart_(cellgridpart)
     , bdry_info_(info)
     , mu_(mu)
+    , mu_macro_(mu_macro)
     , kappa_real_(kappa_real)
     , kappa_imag_(kappa_imag)
+    , kappa_real_macro_(kappa_real_macro)
+    , kappa_imag_macro_(kappa_imag_macro)
     , source_real_(source_real)
     , source_imag_(source_imag)
     , divparam_(divparam)
@@ -129,8 +154,8 @@ public:
 
       //lhs with effective matrices
       //solve cell problems/compute effective matrices
-      GDT::Operators::Cell< CellGridViewType, polOrder, GDT::Operators::ChooseCellProblem::CurlcurlDivreg > curlcell(cellgridview_, mu_, divparam_);
-      GDT::Operators::Cell< CellGridViewType, polOrder, GDT::Operators::ChooseCellProblem::Elliptic > ellipticcell(cellgridview_, kappa_real_, kappa_imag_);
+      GDT::Operators::FemCurlCell< CellGridPartType, polOrder > curlcell(cellgridpart_, mu_, divparam_);
+      GDT::Operators::FemEllipticCell< CellGridPartType, polOrder > ellipticcell(cellgridpart_, kappa_real_, kappa_imag_);
       curlcell.assemble();
       ellipticcell.assemble();
       auto effective_mu = curlcell.effective_matrix();
@@ -142,14 +167,18 @@ public:
       MatrixFct eff_mu_fct(effective_mu);
       MatrixFct eff_kappa_real_fct(effective_kappa_real);
       MatrixFct eff_kappa_imag_fct(effective_kappa_imag);
+      typedef Stuff::Functions::Product< MacroScalarFct, MatrixFct > ProductFct;
+      ProductFct kappa_real_fct(kappa_real_macro_, eff_kappa_real_fct, "stuff.functions.product");
+      ProductFct kappa_imag_fct(kappa_imag_macro_, eff_kappa_imag_fct, "stuff.functions.product");
 
       //assemble macro lhs
-      typedef GDT::Operators::CurlCurl< MatrixFct, MatrixType, SpaceType > CurlOpType;
-      CurlOpType curlop(eff_mu_fct, system_matrix_real_, space_);
-      walker.add(curlop);
-      typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< MatrixFct > > IdOperatorType;
-      const IdOperatorType idop1(eff_kappa_real_fct);
-      const IdOperatorType idop2(eff_kappa_imag_fct);
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< MacroScalarFct, MatrixFct > > CurlOpType;
+      const CurlOpType curlop(mu_macro_, eff_mu_fct);
+      const LocalAssembler::Codim0Matrix< CurlOpType > curlMatrixAssembler(curlop);
+      walker.add(curlMatrixAssembler, system_matrix_real_);
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< ProductFct > > IdOperatorType;
+      const IdOperatorType idop1(kappa_real_fct);
+      const IdOperatorType idop2(kappa_imag_fct);
       const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler1(idop1);
       const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler2(idop2);
       walker.add(idMatrixAssembler1, system_matrix_real_);
@@ -204,14 +233,17 @@ public:
 
 private:
   const SpaceType space_;
-  const CellGridViewType& cellgridview_;
+  const CellGridPartType& cellgridpart_;
   const BoundaryInfoType& bdry_info_;
-  const ScalarFct& mu_;
-  const ScalarFct& kappa_real_;
-  const ScalarFct& kappa_imag_;
-  const Vectorfct& source_real_;
-  const Vectorfct& source_imag_;
-  const ScalarFct& divparam_;
+  const CellScalarFct& mu_;
+  const MacroScalarFct& mu_macro_;
+  const CellScalarFct& kappa_real_;
+  const CellScalarFct& kappa_imag_;
+  const MacroScalarFct& kappa_real_macro_;
+  const MacroScalarFct& kappa_imag_macro_;
+  const MacroVectorfct& source_real_;
+  const MacroVectorfct& source_imag_;
+  const CellScalarFct& divparam_;
   mutable bool is_assembled_;
   mutable MatrixType system_matrix_real_;
   mutable MatrixType system_matrix_imag_;
