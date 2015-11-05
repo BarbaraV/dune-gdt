@@ -28,7 +28,6 @@
 #include <dune/stuff/functions/constant.hh>
 
 #include <dune/gdt/spaces/nedelec/pdelab.hh>
-//#include <dune/gdt/localevaluation/hmm.hh>
 #include <dune/gdt/localoperator/codim0.hh>
 #include <dune/gdt/operators/curlcurl.hh>
 #include <dune/gdt/operators/cellreconstruction.hh>
@@ -36,6 +35,10 @@
 #include <dune/gdt/assembler/system.hh>
 #include <dune/gdt/functionals/l2.hh>
 #include <dune/gdt/spaces/constraints.hh>
+
+//for truly HMM
+#include <dune/gdt/localevaluation/hmm.hh>
+#include <dune/gdt/localoperator/hmmcodim0.hh>
 
 //for HelmholtzDecomp
 #include <dune/gdt/spaces/cg/pdelab.hh>
@@ -255,6 +258,201 @@ private:
   mutable VectorType rhs_vector_real_;
   mutable VectorType rhs_vector_imag_;
   mutable ComplexVectorType rhs_vector_total_;
+}; //class HMMDiscretization
+
+
+template< class MacroGridViewType, class CellGridType, int polynomialOrder >
+class CurlHMMDiscretization {
+public:
+  typedef typename MacroGridViewType::ctype                                   MacroDomainFieldType;
+  typedef typename MacroGridViewType::template Codim<0>::Entity               MacroEntityType;
+  typedef double                                                              RangeFieldType;
+  static const size_t       dimDomain = MacroGridViewType::dimension;
+  static const size_t       dimRange = dimDomain;
+  static const unsigned int polOrder = polynomialOrder;
+
+  typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename MacroGridViewType::Intersection >                            BoundaryInfoType;
+  typedef Dune::Stuff::LocalizableFunctionInterface< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimRange > MacroVectorfct;
+  typedef Dune::Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, 1 >                 MacroConstFct;
+  typedef Dune::Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, 1 > MacroScalarFct;
+
+  typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType RealMatrixType;
+  typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType RealVectorType;
+  typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType MatrixType;
+  typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType VectorType;
+
+  typedef Dune::GDT::Spaces::Nedelec::PdelabBased< MacroGridViewType, polOrder, double, dimRange > SpaceType;
+  typedef Dune::GDT::DiscreteFunction< SpaceType, RealVectorType > DiscreteFunctionType;
+
+  typedef Dune::GDT::Operators::CurlCellReconstruction< SpaceType, CellGridType > CurlCellReconstruction;
+  typedef Dune::GDT::Operators::IdEllipticCellReconstruction< SpaceType, CellGridType > EllipticCellReconstruction;
+  typedef typename CurlCellReconstruction::PeriodicEntityType CellEntityType;
+  typedef typename CurlCellReconstruction::DomainFieldType CellDomainFieldType;
+  typedef std::map< std::pair< size_t, size_t >, typename CurlCellReconstruction::CellSolutionStorageType > AllCurlSolutionsStorageType;
+  typedef std::map< std::pair< size_t, size_t >, typename EllipticCellReconstruction::CellSolutionStorageType > AllIdSolutionsStorageType;
+  typedef typename CurlCellReconstruction::ScalarFct CellScalarFct;
+  typedef Dune::Stuff::Functions::Constant< CellEntityType, CellDomainFieldType, dimDomain, double, 1 > CellConstFct;
+
+  CurlHMMDiscretization(const MacroGridViewType& macrogridview,
+                        CellGridType& cellgrid,
+                        const BoundaryInfoType& info,
+                        const CellScalarFct& mu,
+                        const CellScalarFct& kappa_real,
+                        const CellScalarFct& kappa_imag,
+                        const MacroVectorfct& source_real,
+                        const MacroVectorfct& source_imag,
+                        const CellScalarFct& divparam,// = CellConstFct(1.0),
+                        const CellScalarFct& stabil = CellConstFct(0.0001),
+                        const MacroScalarFct& mu_macro = MacroConstFct(1.0),
+                        const MacroScalarFct& kappa_real_macro = MacroConstFct(1.0),
+                        const MacroScalarFct& kappa_imag_macro = MacroConstFct(1.0))
+    : coarse_space_(macrogridview)
+    , bdry_info_(info)
+    , macro_mu_(mu_macro)
+    , macro_kappa_real_(kappa_real_macro)
+    , macro_kappa_imag_(kappa_imag_macro)
+    , source_real_(source_real)
+    , source_imag_(source_imag)
+    , periodic_mu_(mu)
+    , divparam_(divparam)
+    , periodic_kappa_real_(kappa_real)
+    , periodic_kappa_imag_(kappa_imag)
+    , stabil_param_(stabil)
+    , curl_cell_(coarse_space_, cellgrid, periodic_mu_, divparam_, stabil_param_)
+    , ell_cell_(coarse_space_, cellgrid, periodic_kappa_real_, periodic_kappa_imag_, stabil_param_)
+    , is_assembled_(false)
+    , system_matrix_real_(0,0)
+    , system_matrix_imag_(0,0)
+    , system_matrix_(0,0)
+    , rhs_vector_real_(0)
+    , rhs_vector_imag_(0)
+    , rhs_vector_(0)
+  {}
+
+  const SpaceType& space() const
+  {
+    return coarse_space_;
+  }
+
+  void assemble() const
+  {
+    using namespace Dune;
+    using namespace Dune::GDT;
+    if(!is_assembled_) {
+      //prepare
+      Stuff::LA::SparsityPatternDefault sparsity_pattern = coarse_space_.compute_volume_pattern();
+      system_matrix_real_ = RealMatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size(), sparsity_pattern);
+      system_matrix_imag_ = RealMatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size(), sparsity_pattern);
+      system_matrix_ = MatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size());
+      rhs_vector_real_ = RealVectorType(coarse_space_.mapper().size());
+      rhs_vector_imag_ = RealVectorType(coarse_space_.mapper().size());
+      rhs_vector_ = VectorType(coarse_space_.mapper().size());
+      SystemAssembler< SpaceType > walker(coarse_space_);
+
+      //solve and store cell problems
+      AllCurlSolutionsStorageType curl_correctors;
+      AllIdSolutionsStorageType id_correctors;
+      std::cout<< "computing curl correctors" <<std::endl;
+      curl_cell_.solve_for_all_quad_points(0, curl_correctors);
+      std::cout<< "computing id correctors" <<std::endl;
+      ell_cell_.solve_for_all_quad_points(2, id_correctors);    //automatically get order here!
+
+      //lhs
+      typedef LocalOperator::HMMCodim0Integral< LocalEvaluation::HMMCurlcurl< CellScalarFct, CurlCellReconstruction > > HMMCurlOperator;
+      typedef LocalOperator::HMMCodim0Integral< LocalEvaluation::HMMIdentity< CellScalarFct, EllipticCellReconstruction > > HMMIdOperator;
+      HMMCurlOperator hmmcurl(curl_correctors, periodic_mu_, divparam_, macro_mu_);
+      HMMIdOperator hmmid_real(id_correctors, periodic_kappa_real_, periodic_kappa_imag_, true, macro_kappa_real_, macro_kappa_imag_);
+      HMMIdOperator hmmid_imag(id_correctors, periodic_kappa_real_, periodic_kappa_imag_, false, macro_kappa_real_, macro_kappa_imag_);
+      LocalAssembler::Codim0Matrix< HMMCurlOperator > hmm_curl_assembler(hmmcurl);
+      LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_real_assembler(hmmid_real);
+      LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_imag_assembler(hmmid_imag);
+      walker.add(hmm_curl_assembler, system_matrix_real_);
+      walker.add(hmm_id_real_assembler, system_matrix_real_);
+      walker.add(hmm_id_imag_assembler, system_matrix_imag_);
+
+      //rhs
+      auto source_functional_real = Functionals::make_l2_volume(source_real_, rhs_vector_real_, coarse_space_);
+      walker.add(*source_functional_real);
+      auto source_functional_imag = Functionals::make_l2_volume(source_imag_, rhs_vector_imag_, coarse_space_);
+      walker.add(*source_functional_imag);
+
+      //apply the homogenous (!) Dirichlet constraints on the macro grid
+      Spaces::DirichletConstraints< typename MacroGridViewType::Intersection >
+              dirichlet_constraints(bdry_info_, coarse_space_.mapper().size());
+      walker.add(dirichlet_constraints);
+      std::cout<< "macro assembly" <<std::endl;
+      walker.assemble();
+      dirichlet_constraints.apply(system_matrix_real_, rhs_vector_real_);
+      dirichlet_constraints.apply(system_matrix_imag_, rhs_vector_imag_);
+
+      //assembly of total (complex) matrix and vector
+      std::complex< double > im(0.0, 1.0);
+      system_matrix_.backend() = system_matrix_imag_.backend().template cast< std::complex< double > >();
+      system_matrix_.scal(im);
+      system_matrix_.backend() += system_matrix_real_.backend().template cast< std::complex< double > >();
+      rhs_vector_.backend() = rhs_vector_imag_.backend().template cast< std::complex< double > >();
+      rhs_vector_.scal(im);
+      rhs_vector_.backend() += rhs_vector_real_.backend().template cast< std::complex< double > > ();
+
+      is_assembled_ = true;
+    }
+  }  //assemble
+
+  bool assembled() const
+  {
+    return is_assembled_;
+  }
+
+  Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > effective_mu() const
+  {
+    return curl_cell_.effective_matrix();
+  }
+
+  std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > > effective_kappa() const
+  {
+    return ell_cell_.effective_matrix();
+  }
+
+  const MatrixType& system_matrix() const
+  {
+    return system_matrix_;
+  }
+
+  const VectorType& rhs_vector() const
+  {
+    return rhs_vector_;
+  }
+
+  void solve(VectorType& solution) const
+  {
+    if (!is_assembled_)
+      assemble();
+    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
+    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+  }
+
+private:
+  const SpaceType coarse_space_;
+  const BoundaryInfoType& bdry_info_;
+  const MacroScalarFct& macro_mu_;
+  const MacroScalarFct& macro_kappa_real_;
+  const MacroScalarFct& macro_kappa_imag_;
+  const MacroVectorfct& source_real_;
+  const MacroVectorfct& source_imag_;
+  const CellScalarFct& periodic_mu_;
+  const CellScalarFct& divparam_;
+  const CellScalarFct& periodic_kappa_real_;
+  const CellScalarFct& periodic_kappa_imag_;
+  const CellScalarFct& stabil_param_;
+  const CurlCellReconstruction curl_cell_;
+  const EllipticCellReconstruction ell_cell_;
+  mutable bool is_assembled_;
+  mutable RealMatrixType system_matrix_real_;
+  mutable RealMatrixType system_matrix_imag_;
+  mutable MatrixType system_matrix_;
+  mutable RealVectorType rhs_vector_real_;
+  mutable RealVectorType rhs_vector_imag_;
+  mutable VectorType rhs_vector_;
 };
 
 
