@@ -728,11 +728,11 @@ public:
     solve_all_at_single_point(coarse_entity, all_cell_solutions, xx);
   }
 
-  void solve_for_all_quad_points(const size_t order, std::vector< CellSolutionStorageType >& solutions_storage) const
+  void solve_for_all_quad_points(const size_t order, std::map< std::pair< size_t, size_t >, CellSolutionStorageType >& solutions_storage) const
   {
-    for (const auto& entity : DSC::entityRange(cell_space_.grid_view()) ) {
+    for (const auto& entity : DSC::entityRange(coarse_space_.grid_view()) ) {
       //prepare
-      CellSolutionStorageType local_solutions(cell_space_.mapper().maxNumDofs());
+      CellSolutionStorageType local_solutions(coarse_space_.mapper().maxNumDofs());
       for (auto& it : local_solutions) {
         if (!complex_){
           std::vector<DiscreteFunction< CellSpaceType, RealVectorType > > it1(1, DiscreteFunction< CellSpaceType, RealVectorType >(cell_space_));
@@ -743,16 +743,19 @@ public:
           it = DSC::make_unique< CellDiscreteFunctionType >(it1);
         }
       }
+      auto index = coarse_space_.grid_view().indexSet().index(entity);
       //get quadrature rule
       typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
       typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
       const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(order));
       //loop over all quadrature points
       const auto quadPointEndIt = volumeQuadrature.end();
-      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
+      size_t ii = 0;
+      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++ii) {
         const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
         solve_all_at_single_point(entity, local_solutions, x);
-        solutions_storage.emplace_back(local_solutions);    //maybe better let solutions_storage be a std:map and as keys are pair of entity's index and nuber of quad point
+        auto key = std::make_pair(index, ii);
+        solutions_storage.insert({key, local_solutions});
       } //loop over quadrature points
     } //walk the grid
   } //solve_for_all_quad_points
@@ -941,7 +944,7 @@ private:
   mutable CurlAssembler            curl_assembler_;
   mutable DivAssembler             div_assembler_;
   mutable IdAssembler              id_assembler_;
-};
+}; //class CurlCellReconstruction
 
 template< class CoarseSpaceType, class CellGridType >
 class IdEllipticCellReconstruction
@@ -974,6 +977,8 @@ public:
 
   typedef LocalOperator::Codim0Integral< LocalEvaluation::Elliptic< ScalarFct > > EllipticOperator;
   typedef LocalAssembler::Codim0Matrix< EllipticOperator >                        LocalAssemblerType;
+  typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< ScalarFct > >  IdOperator;
+  typedef LocalAssembler::Codim0Matrix< IdOperator >                              IdAssemblerType;
 
   using BaseType::coarse_space_;
   using BaseType::grid_part_;
@@ -981,19 +986,24 @@ public:
   using BaseType::system_matrix_;
   using BaseType::system_assembler_;
 
-  IdEllipticCellReconstruction(const CoarseSpaceType& coarse_space, CellGridType& cell_grid, const ScalarFct& kappa_real, const ScalarFct& kappa_imag)
+  IdEllipticCellReconstruction(const CoarseSpaceType& coarse_space, CellGridType& cell_grid, const ScalarFct& kappa_real, const ScalarFct& kappa_imag,
+                               const ScalarFct& idparam = Stuff::Functions::Constant< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, 1>(0.0001))
     : BaseType(coarse_space, cell_grid, true)
     , kappa_real_(kappa_real)
     , kappa_imag_(kappa_imag)
+    , id_param_(idparam)
     , system_matrix_real_(cell_space_.mapper().size(), cell_space_.mapper().size(), cell_space_.compute_volume_pattern())
     , system_matrix_imag_(cell_space_.mapper().size(), cell_space_.mapper().size(), cell_space_.compute_volume_pattern())
     , elliptic_operator_real_(kappa_real_)
     , elliptic_operator_imag_(kappa_imag_)
+    , id_operator_(id_param_)
     , local_assembler_real_(elliptic_operator_real_)
     , local_assembler_imag_(elliptic_operator_imag_)
+    , id_assembler_(id_operator_)
   {
     system_assembler_.add(local_assembler_real_, system_matrix_real_);
     system_assembler_.add(local_assembler_imag_, system_matrix_imag_);
+    system_assembler_.add(id_assembler_, system_matrix_real_);
   }
 
   void assemble_all_local_rhs(const CoarseEntityType& coarse_entity, CellSolutionStorageType& cell_solutions, const CoarseDomainType& xx) const override final
@@ -1127,12 +1137,15 @@ public:
 private:
   const ScalarFct&                 kappa_real_;
   const ScalarFct&                 kappa_imag_;
+  const ScalarFct&                 id_param_;
   mutable RealMatrixType           system_matrix_real_;
   mutable RealMatrixType           system_matrix_imag_;
   mutable EllipticOperator         elliptic_operator_real_;
   mutable EllipticOperator         elliptic_operator_imag_;
+  mutable IdOperator               id_operator_;
   mutable LocalAssemblerType       local_assembler_real_;
   mutable LocalAssemblerType       local_assembler_imag_;
+  mutable IdAssemblerType          id_assembler_;
 };
 
 
