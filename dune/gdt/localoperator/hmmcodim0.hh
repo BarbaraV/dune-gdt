@@ -27,51 +27,55 @@ namespace LocalOperator {
 
 
 //forward to be used in the traits
-template< class HMMEvaluation >
+template< class HMMEvaluation, class CoarseGridView >
 class HMMCodim0Integral;
 
 
 namespace internal {
 
 
-template< class HMMEvaluation >
+template< class HMMEvaluation, class CoarseGridView >
 class HMMCodim0IntegralTraits
 {
 public:
-  typedef HMMCodim0Integral< HMMEvaluation > derived_type;
+  typedef HMMCodim0Integral< HMMEvaluation, CoarseGridView > derived_type;
 };
 
 
 } //namespace internal
 
 
-template< class HMMEvaluation >
+template< class HMMEvaluation, class CoarseGridView >
 class HMMCodim0Integral
-//  : public LocalOperator::Codim0Interface< internal::HMMCodim0IntegralTraits< HMMEvaluation > >  //would like to derive like this, but method apply does not fit.
+  : public LocalOperator::Codim0Interface< internal::HMMCodim0IntegralTraits< HMMEvaluation, CoarseGridView > >
 {
 public:
-  typedef internal::HMMCodim0IntegralTraits< HMMEvaluation > Traits;
-  typedef HMMEvaluation                                      HMMEvaluationType;
+  typedef internal::HMMCodim0IntegralTraits< HMMEvaluation, CoarseGridView > Traits;
+  typedef HMMEvaluation                                                      HMMEvaluationType;
+  typedef CoarseGridView                                                     GridViewType;
 
 private:
   static const size_t numTmpObjectsRequired_ = 1;
 
 public:
   template< class... Args >
-  explicit HMMCodim0Integral(Args&& ...args)
+  explicit HMMCodim0Integral(const GridViewType& grid_view, Args&& ...args)
     : evaluation_(std::forward< Args >(args)...)
+    , grid_view_(grid_view)
     , over_integrate_(0)
   {}
 
   template< class... Args >
-  explicit HMMCodim0Integral(const int over_integrate, Args&& ...args)     // to do: add member grid_view
+  explicit HMMCodim0Integral(const int over_integrate, const GridViewType& grid_view, Args&& ...args)
     : evaluation_(std::forward< Args >(args)...)
+    , grid_view_(grid_view)
     , over_integrate_(boost::numeric_cast< size_t >(over_integrate))
   {}
 
   template< class... Args >
-  explicit HMMCodim0Integral(const size_t over_integrate, Args&& ...args)
+  explicit HMMCodim0Integral(const size_t over_integrate, const GridViewType& grid_view, Args&& ...args)
     : evaluation_(std::forward< Args >(args)...)
+    , grid_view_(grid_view)
     , over_integrate_(over_integrate)
   {}
 
@@ -83,11 +87,11 @@ public:
   template< class E, class D, size_t d, class R, size_t rT, size_t rCT, size_t rA, size_t rCA >
   void apply(const Stuff::LocalfunctionSetInterface< E, D, d, R, rT, rCT >& testBase,
              const Stuff::LocalfunctionSetInterface< E, D, d, R, rA, rCA >& ansatzBase,
-             const size_t& entity_index,
              Dune::DynamicMatrix< R >& ret,
              std::vector< Dune::DynamicMatrix< R > >& tmpLocalMatrices) const
   {
-    const auto& entity = ansatzBase.entity();                            //to do: get index of the entity from the member grid_view
+    const auto& entity = ansatzBase.entity();
+    size_t entity_index = grid_view_.indexSet().index(entity);
     const auto localFunctions = evaluation_.localFunctions(entity);
     // quadrature
     typedef Dune::QuadratureRules< D, d > VolumeQuadratureRules;
@@ -126,6 +130,7 @@ public:
 
 private:
   const HMMEvaluation evaluation_;
+  const GridViewType& grid_view_;
   const size_t over_integrate_;
 }; //class HMMCodim0Integral
 
