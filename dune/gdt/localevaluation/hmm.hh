@@ -73,6 +73,11 @@ public:
 }//namespace internal
 
 
+/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the curl-curl part in the HMM
+ *
+ * \tparan FunctionImp The macroscopic type of paramter functions
+ * \tparam CellProblemType The type of cell reconstruction to use for the correctors
+ */
 template< class FunctionImp, class CellProblemType >
 class HMMCurlcurl                                                          //would like to derive from LocalEvaluationInterface, but method evaluate does not fit
 {
@@ -159,7 +164,9 @@ public:
   /// \{
 
   /**
-    * \brief Computes a curlcurl evaluation for scalar local function and vector valued ansatz and test spaces
+    * \brief Computes the HMM curl-curl evaluation
+    * \note Contra-intuitively, we first iterate over the microscopic enities and then over the rows and columns (base size of the macroscopic space),
+    * but in most applications the number of entities is large in comparison to the size of the macroscopic space, so this is much faster
     * \tparam R RangeFieldType
     */
 
@@ -263,6 +270,12 @@ private:
   const FunctionType&            macro_mu_;
 }; //class HMMCurlcurl
 
+
+/** \brief Class to compute a local evaluation (w.r.t the macroscopic grid) of the identity part of the HMM for curl-curl-problems
+ *
+ * \tparam FunctionImp Type of the macroscopic parameter function
+ * \tparam CellProblemType Type of cell reconstruction for the correctors
+ */
 template< class FunctionImp, class CellProblemType >
 class HMMIdentity                                                                //would like to derive from LocalEvaluationInterface, but method evaluate does not fit
 {
@@ -354,7 +367,9 @@ public:
   /// \{
 
   /**
-    * \brief Computes a curlcurl evaluation for scalar local function and vector valued ansatz and test spaces
+    * \brief Computes the evaluation for the identity part of the HMM for curl-curl-problems
+    * \note Contra-intuitively, we first iterate over the microscopic enities and then over the rows and columns (base size of the macroscopic space),
+    * but in most applications the number of entities is large in comparison to the size of the macroscopic space, so this is much faster
     * \tparam R RangeFieldType
     */
 

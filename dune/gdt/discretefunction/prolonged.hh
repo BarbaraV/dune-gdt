@@ -18,6 +18,16 @@ namespace Dune {
 namespace GDT {
 
 
+/** \brief Class to prolong a discrete function to a finer grid
+ *
+ * This class fulfills the GlobalFucntionInterface. The methods evaluate and jacobian are implemented using
+ * the EntityInLevelSearch and global coordinates.
+ *
+ * \note Due to the use of EntityInLevelSearch, this class may not be optimal
+ *
+ * \tparam FunctionImp The type of discrete function
+ * \tparam RangeGridView The (finer) grid to map to
+ */
 template< class FunctionImp, class RangeGridView >
 class ProlongedFunction
   : public Stuff::GlobalFunctionInterface< typename RangeGridView::template Codim<0>::Entity,
@@ -28,9 +38,8 @@ class ProlongedFunction
 {
   typedef Stuff::GlobalFunctionInterface< typename RangeGridView::template Codim<0>::Entity,
                                            typename FunctionImp::DomainFieldType, FunctionImp::dimDomain,
-                                           typename FunctionImp::RangeFieldType, FunctionImp::dimRange >
-                BaseType;
-  typedef ProlongedFunction< FunctionImp, RangeGridView > ThisType;
+                                           typename FunctionImp::RangeFieldType, FunctionImp::dimRange > BaseType;
+  typedef ProlongedFunction< FunctionImp, RangeGridView >                                                ThisType;
 
 public:
   typedef typename BaseType::LocalfunctionType LocalfunctionType;
@@ -82,11 +91,11 @@ public:
     std::vector< FieldVector< typename SourceGridViewType::ctype, SourceGridViewType::dimension> > global_point(1);
     global_point[0] = xx;
     const auto source_entity_ptr = entity_search(global_point);
-    assert(source_entity_ptr.size() == 1); //correct and necessary?
+    assert(source_entity_ptr.size() == 1);
     const auto& source_entity_unique_ptr = source_entity_ptr[0];
     if(source_entity_unique_ptr){
       const auto source_entity_ptr1 = *source_entity_unique_ptr;
-      const auto& source_entity = *source_entity_ptr1; //so complicated necessary?
+      const auto& source_entity = *source_entity_ptr1;
       //evaluate source function
       const auto local_source_point = source_entity.geometry().local(xx);
       const auto local_source = source_function_.local_function(source_entity);
@@ -104,11 +113,11 @@ public:
     std::vector< FieldVector< typename SourceGridViewType::ctype, SourceGridViewType::dimension> > global_point(1);
     global_point[0] = xx;
     const auto source_entity_ptr = entity_search(global_point);
-    assert(source_entity_ptr.size() == 1); //correct and necessary?
+    assert(source_entity_ptr.size() == 1);
     const auto& source_entity_unique_ptr = source_entity_ptr[0];
     if(source_entity_unique_ptr){
       const auto source_entity_ptr1 = *source_entity_unique_ptr;
-      const auto& source_entity = *source_entity_ptr1; //so complicated necessary?
+      const auto& source_entity = *source_entity_ptr1;
       //evaluate jacobain of the source function
       const auto local_source_point = source_entity.geometry().local(xx);
       const auto local_source = source_function_.local_function(source_entity);

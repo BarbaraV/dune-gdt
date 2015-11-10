@@ -65,7 +65,7 @@ public:
  * \note only scalar parameters are supported for sure
  *
  * \tparam FunctionType Type of the parameter function
- * \tparam MatrixImp Type for the system matrix everything is assmebled in
+ * \tparam MatrixImp Type for the system matrix everything is assembled in
  * \tparam SourceSpaceImp Type of the ansatz space
  * \tparam RangeSpaceImp Type of the test space
  * \tparam GridViewImp Type of the grid

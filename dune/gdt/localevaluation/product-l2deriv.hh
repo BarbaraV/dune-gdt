@@ -255,7 +255,7 @@ public:
   /// \{
 
   /**
-   * \brief computes a product between a local (l2) function and the gradients of a scalar test base
+   * \brief computes a product evaluation between a scalar valued local l2 function, a constant vector and the gradients of a test space
    */
   template< class R>
   void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,
@@ -398,7 +398,7 @@ private:
 
 
 /**
- *  \brief  Computes a product evaluation between a scalar valued local l2 function, a constnat vector and the curls of a test space.
+ *  \brief  Computes a product evaluation between a scalar valued local l2 function, a constant vector and the curls of a test space.
  */
 template< class LocalizableFunctionImp, class VectorofVectors >
 class VectorL2curl
@@ -475,7 +475,7 @@ public:
   /// \{
 
   /**
-   * \brief computes a product between a local (l2) function and the curls of a vectorial test base
+   * \brief computes a product evaluation between a scalar valued local l2 function, a constant vector and the curls of a test space.
    */
   template< class R, size_t r >
   void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,

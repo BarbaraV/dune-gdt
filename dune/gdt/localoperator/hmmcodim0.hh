@@ -45,6 +45,12 @@ public:
 } //namespace internal
 
 
+/** \brief Class to compute a local Codim0 integral on an entity with a local evaluation of HMM type
+ * \note this class is necessary because the HMM evaluation needs the entity index and number of quadrature point for the local evaluation
+ *
+ * \tparam HMMEvaluation Type of the local HMM evaluation
+ * \tparam CoarseGridView Type of GridView this integral is computed on, needed to get the entity's index
+ */
 template< class HMMEvaluation, class CoarseGridView >
 class HMMCodim0Integral
   : public LocalOperator::Codim0Interface< internal::HMMCodim0IntegralTraits< HMMEvaluation, CoarseGridView > >

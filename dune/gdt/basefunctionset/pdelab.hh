@@ -455,7 +455,7 @@ private:
 }; // class PiolaTransformedPdelabWrapper
 
 
-/** \brief Wrapper-class for the Hcurl-confroming transformation, e.g. for member functions of the Nedelec spaces
+/** \brief Wrapper-class for the Hcurl-conforming transformation, e.g. for member functions of the Nedelec spaces
  *
  * \note As the curl is only defined in dimension 3, the domainDim and the rangeDim have to equal 3
  *

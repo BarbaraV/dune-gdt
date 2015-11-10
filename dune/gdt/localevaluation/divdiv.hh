@@ -48,7 +48,7 @@ public:
 
 
 /**
-  * \brief Computes a dividv evaluation: (paramfunction*div(ansatz function)* div(test function))
+  * \brief Computes a dividv evaluation: (paramfunction * div(ansatz function) * div(test function))
   * \note only implemented for scalar parameter functions at the moment
   */
 template< class ParamFunctionImp >

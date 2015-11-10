@@ -168,8 +168,8 @@ protected:
   {
     auto numlocalscalardofs = this->numDofs(entity)/dimRange;
     auto numglobalscalardofs = this->size()/dimRange;
-    auto numcomp = localIndex/numlocalscalardofs; //should give integralpart of the division
-    return numcomp*numglobalscalardofs + this->lfs_.dofIndex(localIndex).entityIndex()[1];   //loclaIndex oder localIndex-numcomp*numlocalscalardofs ?
+    auto numcomp = localIndex/numlocalscalardofs;
+    return numcomp * numglobalscalardofs + this->lfs_.dofIndex(localIndex).entityIndex()[1];
   }
 }; // class ContinuousPowerPdelabWrapper
 

@@ -111,7 +111,7 @@ public:
 
 
 /**
-  * \brief Computes a curlcurl evaluation: (paramfunction*curl(ansatz function)* curl(test function))
+  * \brief Computes a curlcurl evaluation: (paramfunction * curl(ansatz function) * curl(test function))
   */
 template< class ScalarParamImp, class TensorParamImp >
 class CurlCurl

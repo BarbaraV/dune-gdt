@@ -535,6 +535,13 @@ private:
   mutable VectorType        rhs_vector_;
 }; //class FemCurlCell
 
+
+/** \brief Abstract base class for cell reconstructions / cell problems
+ * \tparam CoarseSpaceType Type of space the reconstructions are computed from
+ * \tparam CellGridType Type of grid for the unit cube
+ * \tparam CellSpaceType Type of space the corrections lie in
+ * \tparam iscomplex Boolean whether the parameters are complex
+ */
 template< class CoarseSpaceType, class CellGridType, class CellSpaceType, bool iscomplex >
 class CellReconstruction
 {
@@ -636,6 +643,9 @@ public:
       DUNE_THROW(Dune::InvalidStateException, "Solution vector invalid!");
   }
 
+  /** \brief averages a function over the unit cube
+   *
+   */
   template< class FunctionType >
   typename FunctionType::RangeType average(FunctionType& function) const
   {
@@ -664,8 +674,27 @@ public:
     return result;
   } //average
 
+  /**
+   * @brief compute_cell_solutions Computes the cwell solutions, i.e. the corrections for the unit vectors
+   * @param cell_solutions Vector of pointers to discrete functions to store the results in
+   */
   void compute_cell_solutions(CellSolutionStorageType& cell_solutions) const
   {
+    assert(cell_solutions.size() > 0);
+    //clear return argument
+    if(!complex_) {
+      for (auto& localSol : cell_solutions) {
+        assert(localSol->size() > 0);
+        localSol->operator[](0).vector() *= 0;
+      }
+    }
+    else {
+      for (auto& localSol : cell_solutions) {
+        assert(localSol->size() > 1);
+        localSol->operator[](0).vector() *= 0;
+        localSol->operator[](1).vector() *= 0;
+      }
+    }
     CellSolutionStorageType all_cell_rhs(cell_solutions.size());
     for (auto& it : all_cell_rhs) {
       if (!complex_) {
@@ -685,6 +714,12 @@ public:
     }
   } //compute_cell_solutions
 
+  /**
+   * @brief solve_all_at_single_point Computes corrections of all base functions at given local point
+   * @param coarse_entity Entity of the macroscopic grid the corrections are computed for
+   * @param all_cell_solutions Vector of pointers to discrete functions to store the results in
+   * @param xx Local (macroscopic) point the base functions are evaluated in
+   */
   void solve_all_at_single_point(const CoarseEntityType& coarse_entity, CellSolutionStorageType& all_cell_solutions,
                                  const CoarseDomainType& xx) const
   {
@@ -728,6 +763,11 @@ public:
     solve_all_at_single_point(coarse_entity, all_cell_solutions, xx);
   }
 
+  /**
+   * @brief solve_for_all_quad_points Computes the corrections of all base functions at all quadrature points of the macroscopic grid
+   * @param order Order of the quadrature rule to use
+   * @param solutions_storage Map of (entity index, no. quadrature point) to the local corrections (stored in a vector of pointers to discrete functions)
+   */
   void solve_for_all_quad_points(const size_t order, std::map< std::pair< size_t, size_t >, CellSolutionStorageType >& solutions_storage) const
   {
     for (const auto& entity : DSC::entityRange(coarse_space_.grid_view()) ) {
@@ -770,6 +810,11 @@ protected:
   const bool                               complex_;
 }; //class CellReconstruction
 
+
+/** \brief Class for the correction of the curl of the macroscopic solution
+ * \tparam CoarseSpaceType Type of space the corrections are computed from
+ * \tparam CellGridType Type of grid to use for the unit cube
+ */
 template< class CoarseSpaceType, class CellGridType >
 class CurlCellReconstruction
   : public CellReconstruction< CoarseSpaceType, CellGridType,
@@ -833,6 +878,12 @@ public:
     system_assembler_.add(id_assembler_, system_matrix_);
   }
 
+  /**
+   * @brief assemble_all_local_rhs Assembles the rhs of the cell problems for all base functions on the entity
+   * @param coarse_entity Entity of the macroscopic grid we want to compute the corrections for
+   * @param cell_solutions Vector of pointers to discrete functions to store the results in
+   * @param xx Local (macroscopic) point the base functions are evaluated at
+   */
   void assemble_all_local_rhs(const CoarseEntityType& coarse_entity, CellSolutionStorageType& cell_solutions, const CoarseDomainType& xx) const override final
   {
     assert(cell_solutions.size() > 0 && "You have to pre-allocate space");
@@ -861,6 +912,10 @@ public:
    system_assembler_.assemble();
   }
 
+  /**
+   * @brief assemble_cell_solutions_rhs Assembles rhs for computation of cell corrections
+   * @param cell_solutions Vector of pointers to discrete functions to store the results in
+   */
   void assemble_cell_solutions_rhs(CellSolutionStorageType& cell_solutions) const override final
   {
     assert(cell_solutions.size() > 0 && "You have to pre-allocate space");
@@ -901,6 +956,10 @@ public:
     apply(current_rhs[0].vector(), current_solution);
   } //apply(DiscreteFct, DiscreteFct)
 
+  /**
+   * @brief effective_matrix Computes the effective matrix belonging to this cell problem
+   * @return effective matrix
+   */
   FieldMatrix< RangeFieldType, dimDomain, dimDomain > effective_matrix() const
   {
     CellSolutionStorageType cell_rhs(dimDomain);
@@ -946,6 +1005,11 @@ private:
   mutable IdAssembler              id_assembler_;
 }; //class CurlCellReconstruction
 
+
+/** Class for the correction of the macroscopic solution itself
+ * \tparam CoarseSpaceType Type of space the corrections are computed from
+ * \tparam CellGridType Type of grid for the unit cube
+ */
 template< class CoarseSpaceType, class CellGridType >
 class IdEllipticCellReconstruction
   : public CellReconstruction< CoarseSpaceType, CellGridType,
@@ -1006,6 +1070,12 @@ public:
     system_assembler_.add(id_assembler_, system_matrix_real_);
   }
 
+  /**
+   * @brief assemble_all_local_rhs Assembles the rhs of the cell problems for all base functions on the entity
+   * @param coarse_entity Entity of the macroscopic grid we want to compute the corrections for
+   * @param cell_solutions Vector of pointers to discrete functions to store the results in
+   * @param xx Local (macroscopic) point the base functions are evaluated at
+   */
   void assemble_all_local_rhs(const CoarseEntityType& coarse_entity, CellSolutionStorageType& cell_solutions, const CoarseDomainType& xx) const override final
   {
     assert(cell_solutions.size() > 0 && "You have to pre-allocate space");
@@ -1039,6 +1109,10 @@ public:
    system_matrix_.backend() += system_matrix_real_.backend().template cast< std::complex< RangeFieldType > >();
   }
 
+  /**
+   * @brief assemble_cell_solutions_rhs Assembles rhs for computation of cell corrections
+   * @param cell_solutions Vector of pointers to discrete functions to store the results in
+   */
   void assemble_cell_solutions_rhs(CellSolutionStorageType& cell_rhs) const override final
   {
     assert(cell_rhs.size() > 0 && "You have to pre-allocate space");
@@ -1094,6 +1168,10 @@ public:
     apply(tmp_rhs, current_solution);
   }
 
+  /**
+   * @brief effective_matrix Computes the effective matrix belonging to this cell problem
+   * @return Vector with real and imaginary part of effective matrix
+   */
   std::vector< FieldMatrix< RangeFieldType, dimDomain, dimDomain > > effective_matrix() const
   {
     CellSolutionStorageType cell_rhs(dimDomain);
