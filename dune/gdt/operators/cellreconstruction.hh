@@ -828,6 +828,7 @@ private:
 public:
   using typename BaseType::CoarseEntityType;
   using typename BaseType::CoarseDomainType;
+  using typename BaseType::CoarseDomainFieldType;
   using typename BaseType::CellSolutionStorageType;
   using typename BaseType::CellDiscreteFunctionType;
   using typename BaseType::DomainFieldType;
@@ -840,9 +841,7 @@ public:
   using BaseType::dimDomain;
   using BaseType::dimRange;
 
-  typedef Dune::Stuff::LocalizableFunctionInterface< CoarseEntityType, DomainFieldType, dimDomain, RangeFieldType, 1 >     ScalarFct;
-  typedef Dune::Stuff::Functions::Constant< CoarseEntityType, DomainFieldType, dimDomain, RangeFieldType, 1 >              ConstantFct;
-  typedef Dune::Stuff::Functions::Constant< CoarseEntityType, DomainFieldType, dimDomain, RangeFieldType, dimDomain >      ConstantVectorFct;
+  typedef Dune::Stuff::LocalizableFunctionInterface< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, 1 >     ScalarFct;
 
   typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< ScalarFct > > CurlOperator;
   typedef LocalOperator::Codim0Integral< LocalEvaluation::Divdiv< ScalarFct > >   DivOperator;
@@ -1037,7 +1036,6 @@ public:
   using BaseType::dimDomain;  
 
   typedef Dune::Stuff::LocalizableFunctionInterface< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, 1 >     ScalarFct;
-  typedef Dune::Stuff::Functions::Constant< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, dimDomain >      ConstantVectorFct;
 
   typedef LocalOperator::Codim0Integral< LocalEvaluation::Elliptic< ScalarFct > > EllipticOperator;
   typedef LocalAssembler::Codim0Matrix< EllipticOperator >                        LocalAssemblerType;
@@ -1206,7 +1204,7 @@ public:
         retRow_real[jj] += (cell_rhs[ii]->operator[](0).vector().dot(cell_solutions[jj]->operator[](0).vector())
                             - cell_rhs[ii]->operator[](1).vector().dot(cell_solutions[jj]->operator[](1).vector()));
         retRow_imag[jj] += (cell_rhs[ii]->operator[](1).vector().dot(cell_solutions[jj]->operator[](0).vector())
-                            + cell_rhs[ii]->operator[](0).vector().dot(cell_solutions[jj]->operator[](1).vector()));     //stimmt das?
+                            + cell_rhs[ii]->operator[](0).vector().dot(cell_solutions[jj]->operator[](1).vector()));
       }
     }
     return ret;
