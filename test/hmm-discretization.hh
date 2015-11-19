@@ -302,9 +302,9 @@ public:
       size_t ii = 0;
       for (auto quadPointIt = volumeQuadrature1.begin(); quadPointIt != quadPointEndIt1; ++quadPointIt, ++ii) {
         const auto local_curl_cell_sol = curl_correctors_.at(std::make_pair(entity_index, ii));
+        tmp_curl_vec_real *= 0;
+        tmp_curl_vec_imag *= 0;
         for (size_t jj = 0; jj < local_curl_cell_sol.size(); ++jj) {
-          tmp_curl_vec_real *= 0;
-          tmp_curl_vec_imag *= 0;
           tmp_curl_vec_real += local_macro_vector_real.get(jj) * local_curl_cell_sol[jj]->operator[](0).vector();
           tmp_curl_vec_imag += local_macro_vector_imag.get(jj) * local_curl_cell_sol[jj]->operator[](0).vector();
         }
@@ -320,9 +320,9 @@ public:
       size_t kk = 0;
       for (auto quadPointIt = volumeQuadrature2.begin(); quadPointIt != quadPointEndIt2; ++quadPointIt, ++kk) {
         const auto local_id_cell_sol = id_correctors_.at(std::make_pair(entity_index, kk));
+        tmp_id_vec_real *= 0;
+        tmp_id_vec_imag *= 0;
         for (size_t jj = 0; jj < local_id_cell_sol.size(); ++jj) {
-          tmp_id_vec_real *= 0;
-          tmp_id_vec_imag *= 0;
           tmp_id_vec_real += local_macro_vector_real.get(jj) * local_id_cell_sol[jj]->operator[](0).vector()
                                 - local_macro_vector_imag.get(jj) * local_id_cell_sol[jj]->operator[](1).vector();
           tmp_id_vec_imag += local_macro_vector_imag.get(jj) * local_id_cell_sol[jj]->operator[](0).vector()
