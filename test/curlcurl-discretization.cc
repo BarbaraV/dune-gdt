@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
   const ExpressionFctScalar id_cell_one_real("x", "1/(8*pi)*(sin(2*pi*x[0])-cos(2*pi*x[0]))", 2, "real_part_first_cell_solution_id",
                                        {"1/4*(cos(2*pi*x[0])+sin(2*pi*x[0]))", "0", "0"});
   const ExpressionFctScalar id_cell_one_imag("x", "-1/(8*pi)*(sin(2*pi*x[0])+cos(2*pi*x[0]))", 2, "imag_part_first_cell_solution_id",
-                                       {"1/4*(cos(2*pi*x[0])+sin(2*pi*x[0]))", "0", "0"});
+                                       {"-1/4*(cos(2*pi*x[0])-sin(2*pi*x[0]))", "0", "0"});
   //expsol.visualize(leafView, "expected_homogenized_solution", false);
 
   const ExpressionFct freal("x", {"(pi*pi-0.25)*sin(pi*x[1])*sin(pi*x[2])", "(pi*pi*(0.5+1/sqrt(3))-0.25)*sin(pi*x[0])*sin(pi*x[2])", "(pi*pi*(0.5+1/sqrt(3))-0.25)*sin(pi*x[0])*sin(pi*x[1])"}, 2, "real_rhs");

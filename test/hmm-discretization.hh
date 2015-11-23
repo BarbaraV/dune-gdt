@@ -396,11 +396,17 @@ public:
             //evaluate
             for (size_t jj = 0; jj < dimDomain; ++jj) {
               auto jacob_real = expected_cell_solutions[jj][0].local_function(micro_entity)->jacobian(yy);
+              auto jacob_real1 = jacob_real;
               jacob_real *= expected_macro_value_real[jj];
-              micro_real += jacob_real;
+              jacob_real1 *= expected_macro_value_imag[jj];
               auto jacob_imag = expected_cell_solutions[jj][1].local_function(micro_entity)->jacobian(yy);
+              auto jacob_imag1 = jacob_imag;
               jacob_imag *= expected_macro_value_imag[jj];
-              micro_imag += jacob_imag;
+              jacob_imag1 *= expected_macro_value_real[jj];
+              micro_real += jacob_real;
+              micro_real -= jacob_imag;
+              micro_imag += jacob_real1;
+              micro_imag += jacob_imag1;
             }
             micro_real -= local_correc_real->jacobian(yy);
             micro_imag -= local_correc_imag->jacobian(yy);
