@@ -355,7 +355,7 @@ public:
       auto expected_macro_local_real = expected_macro_part[0].local_function(macro_entity);
       auto expected_macro_local_imag = expected_macro_part[1].local_function(macro_entity);
       auto entity_index = coarse_space_.grid_view().indexSet().index(macro_entity);
-      size_t integrand_order = boost::numeric_cast< size_t >(std::max(ssize_t(expected_macro_local_real->order()), ssize_t(expected_macro_local_imag->order())));
+      size_t integrand_order = boost::numeric_cast< size_t >(2* std::max(ssize_t(expected_macro_local_real->order()), ssize_t(expected_macro_local_imag->order())));
       if(type == "id" || type == "id_real" || type == "id_imag")
         integrand_order = 2;
       typedef Dune::QuadratureRules< MacroDomainFieldType, dimDomain > VolumeQuadratureRules;
@@ -430,7 +430,7 @@ public:
         result += quadrature_weight * integration_factor * cube_result;
       } //loop over macro quadrature points
     }//loop over macro entities
-    return result;
+    return std::sqrt(result);
   }//corrector_error
 
 private:
