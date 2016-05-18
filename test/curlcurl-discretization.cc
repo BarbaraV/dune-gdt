@@ -42,8 +42,8 @@ int main(int argc, char** argv) {
 
   // instantiate alugrid
   typedef Dune::ALUGrid< 3, 3, simplex, conforming > GridType;
-  unsigned int num_macro_cubes = 12;
-  Stuff::Grid::Providers::Cube< GridType > grid_provider(0.0, 1.0, num_macro_cubes);
+  unsigned int num_ref_cubes = 24;
+  Stuff::Grid::Providers::Cube< GridType > grid_provider(0.0, 1.0, num_ref_cubes);
   auto& grid = grid_provider.grid();
   typedef GridType::LeafGridView LeafGridView;
   auto leafView = grid.leafGridView();
@@ -113,14 +113,14 @@ int main(int argc, char** argv) {
   //parameters
   typedef Stuff::Functions::Expression< PeriodicEntityType, double, 3, double, 1 > ScalarExpressionFct;
   typedef Stuff::Functions::Constant< PeriodicEntityType, double, 3, double, 1> PerConstFct;
-  const ScalarExpressionFct hetep("x", "1/(2+cos(2*pi*x[0]))", 0, "periodic_permittivity");
+/*  const ScalarExpressionFct hetep("x", "1/(2+cos(2*pi*x[0]))", 0, "periodic_permittivity");
   const ScalarExpressionFct hetkappa_real("x", "-(2+cos(2*pi*x[0]))/(9+4*cos(2*pi*x[0])+4*sin(2*pi*x[0]))", 0, "periodic_kappa_real");
-  const ScalarExpressionFct hetkappa_imag("x", "(2+sin(2*pi*x[0]))/(9+4*cos(2*pi*x[0])+4*sin(2*pi*x[0]))", 0, "periodic_kappa_imag");
+  const ScalarExpressionFct hetkappa_imag("x", "(2+sin(2*pi*x[0]))/(9+4*cos(2*pi*x[0])+4*sin(2*pi*x[0]))", 0, "periodic_kappa_imag"); */
   const PerConstFct divparam(0.01);
   const PerConstFct stabil(0.0001);
 
   //analytical solutions
-  const ExpressionFct expsol("x", {"sin(pi*x[1])*sin(pi*x[2])", "sin(pi*x[0])*sin(pi*x[2])", "sin(pi*x[0])*sin(pi*x[1])"}, 2, "expectedsolution",
+/*  const ExpressionFct expsol("x", {"sin(pi*x[1])*sin(pi*x[2])", "sin(pi*x[0])*sin(pi*x[2])", "sin(pi*x[0])*sin(pi*x[1])"}, 2, "expectedsolution",
                              {{"0", "pi*cos(pi*x[1])*sin(pi*x[2])", "pi*sin(pi*x[1])*cos(pi*x[2])"},
                               {"pi*cos(pi*x[0])*sin(pi*x[2])", "0", "pi*sin(pi*x[0])*cos(pi*x[2])"},
                               {"pi*cos(pi*x[0])*sin(pi*x[1])", "pi*sin(pi*x[0])*cos(pi*x[1])", "0"}});
@@ -141,10 +141,10 @@ int main(int argc, char** argv) {
   const ExpressionFctScalar id_cell_one_imag("x", "-1/(8*pi)*(sin(2*pi*x[0])+cos(2*pi*x[0]))", 2, "imag_part_first_cell_solution_id",
                                        {"-1/4*(cos(2*pi*x[0])-sin(2*pi*x[0]))", "0", "0"});
   //expsol.visualize(leafView, "expected_homogenized_solution", false);
-
+*/
 
   //expected correctors
-  std::vector< ExpressionFct > expected_solution_total({expsol, zero_expr_vec});
+/*  std::vector< ExpressionFct > expected_solution_total({expsol, zero_expr_vec});
   std::vector< ExpressionFctScalar > expected_cell_id_one({id_cell_one_real, id_cell_one_imag});
   std::vector< ExpressionFctScalar > expected_cell_id_others({zero_expr_sca, zero_expr_sca});
   std::vector< std::vector< ExpressionFctScalar > > expected_cell_id({expected_cell_id_one, expected_cell_id_others, expected_cell_id_others});
@@ -158,8 +158,8 @@ int main(int argc, char** argv) {
 
   const ExpressionFct freal("x", {"(pi*pi-0.25)*sin(pi*x[1])*sin(pi*x[2])", "(pi*pi*(0.5+1/sqrt(3))-0.25)*sin(pi*x[0])*sin(pi*x[2])", "(pi*pi*(0.5+1/sqrt(3))-0.25)*sin(pi*x[0])*sin(pi*x[1])"}, 2, "real_rhs");
   const ExpressionFct fimag("x", {"0.25*sin(pi*x[1])*sin(pi*x[2])", "0.25*sin(pi*x[0])*sin(pi*x[2])", "0.25*sin(pi*x[0])*sin(pi*x[1])"}, 2, "imag_rhs");
-
-  for (unsigned int num_micro_cubes : {8}) {
+*/
+/*  for (unsigned int num_micro_cubes : {12}) {
     //instantiate grid
     Stuff::Grid::Providers::Cube< GridType > cell_grid_provider(0.0, 1.0, num_micro_cubes);
     auto& cell_grid = cell_grid_provider.grid();
@@ -167,28 +167,28 @@ int main(int argc, char** argv) {
     //HMM
     DSG::BoundaryInfos::AllDirichlet< LeafGridView::Intersection > bdry_info;
     typedef CurlHMMDiscretization< LeafGridView, GridType, 1 > CurlHMMType;
-    CurlHMMType curlHMM(leafView, cell_grid, bdry_info, hetep, hetkappa_real, hetkappa_imag, freal, fimag, divparam, stabil, scalar1, scalar1, scalar1);
-    std::cout<< "hmm assembly for " << num_macro_cubes<< "cubes per dim on macro grid and "<< num_micro_cubes<< "cubes per dim on the micro grid"<< std::endl;
+    CurlHMMType curlHMM(leafView, cell_grid, bdry_info, hetep, hetkappa_real, hetkappa_imag, freal, fimag, divparam, stabil, scalar1, scalar1, scalar1); */
+/*    std::cout<< "hmm assembly for " << num_macro_cubes<< "cubes per dim on macro grid and "<< num_micro_cubes<< "cubes per dim on the micro grid"<< std::endl;
     curlHMM.assemble();
     std::cout<< "hmm solving" <<std::endl;
     Dune::Stuff::LA::Container< std::complex< double > >::VectorType sol1;
     curlHMM.solve(sol1);
-    CurlHMMType::RealVectorType solreal(sol1.size());
+    CurlHMMType::RealVectorType solreal(sol1.size()); */
     /*solreal.backend() = sol1.backend().real();
     CurlHMMType::DiscreteFunctionType sol_real_func(curlHMM.space(), solreal, "solution_real_part");
     typedef Stuff::Functions::Difference< ExpressionFct, CurlHMMType::DiscreteFunctionType > DifferenceFct;
     DifferenceFct myerror(expsol, sol_real_func); */
 
-    std::cout<< "corrector computation" <<std::endl;
+ /*   std::cout<< "corrector computation" <<std::endl;
     CurlHMMType::DiscreteFunctionType macro_sol(curlHMM.space(), solreal);
     std::vector< CurlHMMType::DiscreteFunctionType > macro_solution(2, macro_sol);
     std::map< std::pair< size_t, size_t >, CurlHMMType::CurlCellReconstruction::CellDiscreteFunctionType > curl_corrector;
     std::map< std::pair< size_t, size_t >, CurlHMMType::EllipticCellReconstruction::CellDiscreteFunctionType > id_corrector;
     curlHMM.solve_and_correct(macro_solution, curl_corrector, id_corrector);
-
+*/
 
     //prolongation
-    Stuff::Grid::Providers::Cube< GridType > fine_grid_provider(0.0, 1.0, 2 * num_macro_cubes);
+/*    Stuff::Grid::Providers::Cube< GridType > fine_grid_provider(0.0, 1.0, 2 * num_macro_cubes);
     auto fine_leafview = fine_grid_provider.grid().leafGridView();
     typedef GDT::ProlongedFunction< CurlHMMType::DiscreteFunctionType, LeafGridView > ProlongedDiscrFct;
     ProlongedDiscrFct prolonged_real(macro_solution[0], fine_leafview);
@@ -203,9 +203,9 @@ int main(int argc, char** argv) {
     DifferenceFct error_imag(zero_expr_vec, macro_solution[1]);
     ProlongedDifferenceFct prolonged_error_real(expsol, prolonged_real);
     ProlongedDifferenceFct prolonged_error_imag(zero_expr_vec, prolonged_imag);
-
+*/
     //H(curl) error
-    std::cout<< "compute macro error" <<std::endl;
+ /*   std::cout<< "compute macro error" <<std::endl;
     GDT::Products::L2< LeafGridView> l2_product_operator(leafView);
     GDT::Products::HcurlSemi< LeafGridView > hcurl_product_operator(leafView);
     const double abserror = std::sqrt(l2_product_operator.apply2(error_real, error_real) + hcurl_product_operator.apply2(error_real, error_real)
@@ -214,19 +214,19 @@ int main(int argc, char** argv) {
     std::cout<< "absolute error: "<< abserror << std::endl;
     //std::cout<< "relative error: "<< relerror <<std::endl;
     // std::cout<< "error in the imaginary part" << std::sqrt(l2_product_operator.apply2(sol_imag_func, sol_imag_func)) <<std::endl;
-
+*/
     //corrector errors
-    std::cout<< "computing corrector errors"<<std::endl;
+/*    std::cout<< "computing corrector errors"<<std::endl;
     std::cout<< "error of id corrector: "<< curlHMM.corrector_error(expected_solution_total, expected_cell_id, id_corrector, "id")<<std::endl;
     //std::cout<< "error of id corrector - real part: "<< curlHMM.corrector_error(expected_solution_total, expected_cell_id, id_corrector, "id_real")<<std::endl;
     //std::cout<< "error of id corrector - imag part: "<< curlHMM.corrector_error(expected_solution_total, expected_cell_id, id_corrector, "id_imag")<<std::endl;
     std::cout<< "error of curl corrector: "<< curlHMM.corrector_error(expected_curl, expected_curl_cell, curl_corrector, "curl")<<std::endl;
     //std::cout<< "error of curl corrector - real part: "<< curlHMM.corrector_error(expected_curl, expected_curl_cell, curl_corrector, "curl_real")<<std::endl;
     //std::cout<< "error of curl correctorm - imag part: "<< curlHMM.corrector_error(expected_curl, expected_curl_cell, curl_corrector, "curl_imag")<<std::endl;
-
+*/
 
     //Helmholtz decomposition
-    std::cout<<"computing Helmholtz decomposition macro grid with doubled cubes per dim" <<std::endl;
+ /*   std::cout<<"computing Helmholtz decomposition macro grid with doubled cubes per dim" <<std::endl;
     HelmholtzDecomp< LeafGridView, 1 > decomp(fine_leafview, bdry_info, prolonged_error_real, prolonged_error_imag, scalar1);
     sol1.scal(0.0);
     decomp.solve(sol1);
@@ -244,18 +244,120 @@ int main(int argc, char** argv) {
                  std::sqrt(l2_product_operator.apply2(phi_fct_real, phi_fct_real) + l2_product_operator.apply2(phi_fct_imag, phi_fct_imag))<< std::endl;
     //for othogonal to gradients we somehow have to compute  the l2norm of prolonged_error-gradient(phi_fct)
     //std::cout<< "orthogonal to gradients: "<< std::sqrt(l2totalsquared - h1_semi_prod.apply2(phi_fct, phi_fct)) <<std::endl;
-
+*/
     //visualization
-    if (num_macro_cubes == 12 && num_micro_cubes == 8) {
+/*    if (num_macro_cubes == 12 && num_micro_cubes == 8) {
       expsol.visualize(leafView, "expected_homogenized_solution_12", false);
       macro_solution[0].visualize("hmm_solution_real_12_8");
       curl_corrector.at(std::make_pair(0,0))[0].visualize("first_curl_corrector_12_8");
       id_corrector.at(std::make_pair(0,0))[0].visualize("first_id_corrector_real_12_8");
       id_corrector.at(std::make_pair(0,0))[1].visualize("first_id_corrector_imag_12_8");
     }
-
+*/
+/*    CurlHMMType::EllipticCellReconstruction ellcell(curlHMM.space(), cell_grid, hetkappa_real, hetkappa_imag, stabil);
+    CurlHMMType::CurlCellReconstruction curlcell(curlHMM.space(), cell_grid, hetep, divparam, stabil);
+    std::cout<< "number of entities" <<leafView.size(0)<<std::endl;
+    std::cout<<"number macro dofs"<<curlHMM.space().mapper().size()<<std::endl;
+    std::cout<<"number of curl micro dofs"<<curlcell.cell_space().mapper().size()<<std::endl;
+    std::cout<<"number of id micro dofs"<<ellcell.cell_space().mapper().size()<<std::endl;
   }//end for loop
+*/
 
+  //---------------------------------------------------------------------------------------------------------------------------------------------------------------
+  // another test case
+  //delta=1/3
+  const ExpressionFctScalar hetmu("x", "20/((2+1.5*sin(2*pi*3*x[0]+0.75))*(2+1.5*sin(2*pi*3*x[1]+0.75))*(2+1.5*sin(2*pi*3*x[2]+0.75)))", 2, "oscillatingparam");
+  const ConstantFct zero(0.0);
+  const VectorFct zerovec(0.0);
+  const VectorFct freal(30.0);
+
+  //reference solution
+  DSG::BoundaryInfos::AllDirichlet< LeafGridView::Intersection > curl_bdry_info;
+  Discretization< LeafGridView, 1> realdiscr(leafView, curl_bdry_info, hetmu, scalar2, zero, freal, zerovec);
+  std::cout<< "number of entities" <<leafView.size(0)<<std::endl;
+  std::cout<<"number macro dofs"<< realdiscr.space().mapper().size()<<std::endl;
+  typedef std::complex< double > complextype;
+  std::cout<< "assembling"<<std::endl;
+  realdiscr.assemble();
+
+  try{
+    Dune::Stuff::LA::Container< complextype >::VectorType sol;
+    std::cout<<"solving with bicgstab.diagonal"<<std::endl;
+    typedef Dune::Stuff::LA::Solver< Discretization< LeafGridView, 1>::MatrixTypeComplex > SolverType;
+    Dune::Stuff::Common::Configuration options = SolverType::options("bicgstab.diagonal");
+    options.set("max_iter", "200000", true);
+    SolverType solver(realdiscr.system_matrix());
+    solver.apply(realdiscr.rhs_vector(), sol, options);
+
+    Discretization< LeafGridView, 1>::VectorType solrefreal(sol.size());
+    solrefreal.backend() = sol.backend().real();
+    Discretization< LeafGridView, 1>::ConstDiscreteFunctionType sol_ref_real_func(realdiscr.space(), solrefreal, "reference_solution_real_part");
+
+    //realdiscr.visualize(sol, "discrete_solution", "discrete_solution");
+
+    //HMM solution
+    const ScalarExpressionFct muperiodic("x", "20/((2+1.5*sin(2*pi*x[0]+0.75))*(2+1.5*sin(2*pi*x[1]+0.75))*(2+1.5*sin(2*pi*x[2]+0.75)))", 0, "periodicparam");
+    for(unsigned int num_macro_cubes : {12}) {
+      //macro grid
+      Stuff::Grid::Providers::Cube< GridType > macro_grid_provider(0.0, 1.0, num_macro_cubes);
+      auto macro_leafView = macro_grid_provider.grid().leafGridView();
+      //micro grid
+      unsigned int num_micro_cubes = num_macro_cubes/2;
+      Stuff::Grid::Providers::Cube< GridType > cell_grid_provider(0.0, 1.0, num_micro_cubes);
+      auto& cell_grid = cell_grid_provider.grid();
+
+      //HMM
+      typedef CurlHMMDiscretization< LeafGridView, GridType, 1 > CurlHMMType;
+      CurlHMMType curlHMM(macro_leafView, cell_grid, curl_bdry_info, muperiodic, scalar2, zero, freal, zerovec, divparam, stabil, scalar1, scalar1, zero);
+      std::cout<< "hmm assembly for " << num_macro_cubes<< "cubes per dim on macro grid and "<< num_micro_cubes<< "cubes per dim on the micro grid"<< std::endl;
+      curlHMM.assemble();
+      std::cout<< "hmm solving" <<std::endl;
+      Dune::Stuff::LA::Container< std::complex< double > >::VectorType sol1;
+      curlHMM.solve(sol1);
+
+      CurlHMMType::RealVectorType solreal(sol1.size());
+      solreal.backend() = sol1.backend().real();
+      CurlHMMType::DiscreteFunctionType sol_real_func(curlHMM.space(), solreal, "solution_real_part");
+      sol_real_func.visualize("hmm_solution_real_12_6");
+
+      //prolongation
+      typedef GDT::ProlongedFunction< CurlHMMType::DiscreteFunctionType, LeafGridView > ProlongedDiscrFct;
+      ProlongedDiscrFct prolonged_real(sol_real_func, leafView);
+
+      //error computation
+      typedef Stuff::Functions::Difference< Discretization< LeafGridView, 1>::ConstDiscreteFunctionType, ProlongedDiscrFct > DifferenceFct;
+      DifferenceFct error(sol_ref_real_func, prolonged_real);
+      std::cout<< "compute macro error" <<std::endl;
+      GDT::Products::L2< LeafGridView> l2_product_operator(leafView);
+      GDT::Products::HcurlSemi< LeafGridView > hcurl_product_operator(leafView);
+      const double abserror = std::sqrt(l2_product_operator.apply2(error, error) + hcurl_product_operator.apply2(error, error));
+      //const double relerror = abserror/(std::sqrt(l2_product_operator.apply2(expsol, expsol) + hcurl_product_operator.apply2(expsol, expsol)));
+      std::cout<< "absolute error: "<< abserror << std::endl;
+      //std::cout<< "relative error: "<< relerror <<std::endl;
+
+      //Helmholtz decomposition
+      std::cout<<"computing Helmholtz decomposition on reference grid" <<std::endl;
+      HelmholtzDecomp< LeafGridView, 1 > decomp(leafView, curl_bdry_info, error, zerovec, scalar1);
+      sol1.scal(0.0);
+      decomp.solve(sol1);
+      auto decomp_vec_real = decomp.create_vector();
+      decomp_vec_real.backend() = sol1.backend().real();
+      typedef HelmholtzDecomp< LeafGridView, 1 >::DiscreteFctType DiscreteFctHelmh;
+      DiscreteFctHelmh phi_fct_real(decomp.space(), decomp_vec_real);
+      //auto l2totalsquared = l2_product_operator.apply2(myerror, myerror);
+      //auto l2gradsquared = l2_product_operator.apply2(phi_fct, phi_fct);
+      std::cout<< "total L2 error: " <<std::sqrt(l2_product_operator.apply2(error, error))<<std::endl;
+      std::cout<< "L2 error of gradient part in Helmholtz decomposition: "<<
+                   std::sqrt(l2_product_operator.apply2(phi_fct_real, phi_fct_real))<< std::endl;
+      //for othogonal to gradients we somehow have to compute  the l2norm of prolonged_error-gradient(phi_fct)
+      //std::cout<< "orthogonal to gradients: "<< std::sqrt(l2totalsquared - h1_semi_prod.apply2(phi_fct, phi_fct)) <<std::endl;
+
+    }//end for loop
+  } //end try-block
+
+  catch(...){
+    std::cout<< "something went wrong" <<std::endl;
+  }
 
   return 0;
 }
