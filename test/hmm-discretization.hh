@@ -115,8 +115,6 @@ public:
     , rhs_vector_real_(0)
     , rhs_vector_imag_(0)
     , rhs_vector_(0)
-    , curl_correctors_()
-    , id_correctors_()
   {}
 
   const SpaceType& space() const
@@ -149,18 +147,12 @@ public:
               dirichlet_constraints(bdry_info_, coarse_space_.mapper().size());
 
       if(!is_pseudo_) {
-        //solve and store cell problems
-        std::cout<< "computing curl correctors" <<std::endl;
-        curl_cell_.solve_for_all_quad_points(0, curl_correctors_);
-        std::cout<< "computing id correctors" <<std::endl;
-        ell_cell_.solve_for_all_quad_points(2, id_correctors_);    //automatically get order here!
-
         //lhs
         typedef LocalOperator::HMMCodim0Integral< LocalEvaluation::HMMCurlcurl< CellScalarFct, CurlCellReconstruction >, MacroGridViewType > HMMCurlOperator;
         typedef LocalOperator::HMMCodim0Integral< LocalEvaluation::HMMIdentity< CellScalarFct, EllipticCellReconstruction >, MacroGridViewType > HMMIdOperator;
-        HMMCurlOperator hmmcurl(coarse_space_.grid_view(), curl_correctors_, periodic_mu_, divparam_, macro_mu_);
-        HMMIdOperator hmmid_real(coarse_space_.grid_view(), id_correctors_, periodic_kappa_real_, periodic_kappa_imag_, true, macro_kappa_real_, macro_kappa_imag_);
-        HMMIdOperator hmmid_imag(coarse_space_.grid_view(), id_correctors_, periodic_kappa_real_, periodic_kappa_imag_, false, macro_kappa_real_, macro_kappa_imag_);
+        HMMCurlOperator hmmcurl(coarse_space_.grid_view(), curl_cell_, periodic_mu_, divparam_, macro_mu_);
+        HMMIdOperator hmmid_real(coarse_space_.grid_view(), ell_cell_, periodic_kappa_real_, periodic_kappa_imag_, true, macro_kappa_real_, macro_kappa_imag_);
+        HMMIdOperator hmmid_imag(coarse_space_.grid_view(), ell_cell_, periodic_kappa_real_, periodic_kappa_imag_, false, macro_kappa_real_, macro_kappa_imag_);
         LocalAssembler::Codim0Matrix< HMMCurlOperator > hmm_curl_assembler(hmmcurl);
         LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_real_assembler(hmmid_real);
         LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_imag_assembler(hmmid_imag);
@@ -263,7 +255,7 @@ public:
    * @param id_corrector Map with discrete identity corectors for entity and quadrature point
    * @todo Other types for the correctors so that they can also be evaluated at other points of the macroscopic grid
    */
-  void solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution,
+/*  void solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution,
                          std::map< std::pair< size_t, size_t >, typename CurlCellReconstruction::CellDiscreteFunctionType >& curl_corrector,
                          std::map< std::pair< size_t, size_t >, typename EllipticCellReconstruction::CellDiscreteFunctionType >& id_corrector)
   {
@@ -335,7 +327,7 @@ public:
       } //loop over quadrature points
     } //loop over macro entities
   } //solve_and_correct
-
+*/
   /** \brief Computes the error between analytical correctors and computed (discrete) correctors
    * \note for the id part expected_macro_part is the macroscopic solution, for the curl part it is the solution's curl
    */
@@ -456,8 +448,6 @@ private:
   mutable RealVectorType              rhs_vector_real_;
   mutable RealVectorType              rhs_vector_imag_;
   mutable VectorType                  rhs_vector_;
-  mutable AllCurlSolutionsStorageType curl_correctors_;
-  mutable AllIdSolutionsStorageType   id_correctors_;
 };
 
 

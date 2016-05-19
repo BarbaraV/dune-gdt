@@ -97,7 +97,6 @@ public:
              std::vector< Dune::DynamicMatrix< R > >& tmpLocalMatrices) const
   {
     const auto& entity = ansatzBase.entity();
-    size_t entity_index = grid_view_.indexSet().index(entity);
     const auto localFunctions = evaluation_.localFunctions(entity);
     // quadrature
     typedef Dune::QuadratureRules< D, d > VolumeQuadratureRules;
@@ -115,15 +114,13 @@ public:
     auto& evaluationResult = tmpLocalMatrices[0];
     // loop over all quadrature points
     const auto quadPointEndIt = volumeQuadrature.end();
-    size_t kk = 0;
-    for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
+    for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
       const Dune::FieldVector< D, d > x = quadPointIt->position();
       // integration factors
       const double integrationFactor = entity.geometry().integrationElement(x);
       const double quadratureWeight = quadPointIt->weight();
       // evaluate the local operation
-      auto key = std::make_pair(entity_index, kk);
-      evaluation_.evaluate(localFunctions, ansatzBase, testBase, x, key, evaluationResult);
+      evaluation_.evaluate(localFunctions, ansatzBase, testBase, x, entity, evaluationResult);
       // compute integral
       for (size_t ii = 0; ii < rows; ++ii) {
         auto& retRow = ret[ii];

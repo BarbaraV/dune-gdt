@@ -46,9 +46,9 @@ public:
   typedef std::tuple< std::shared_ptr< typename FunctionType::LocalfunctionType > > LocalfunctionTupleType;
   static const size_t                                                               dimDomain = FunctionType::dimDomain;
 
-  typedef typename CellProblemType::ScalarFct                                                        FineFunctionType;
-  typedef typename CellProblemType::PeriodicViewType                                                 FineGridViewType;
-  typedef std::map< std::pair< size_t, size_t >, typename CellProblemType::CellSolutionStorageType > AllSolutionsStorageType;
+  typedef typename CellProblemType::ScalarFct               FineFunctionType;
+  typedef typename CellProblemType::PeriodicViewType        FineGridViewType;
+  typedef typename CellProblemType::CellSolutionStorageType CellSolutionsStorageType;
 }; //class HMMCurlcurlTraits
 
 template< class FunctionType, class CellProblemType >
@@ -64,9 +64,9 @@ public:
                       std::shared_ptr< typename FunctionType::LocalfunctionType > > LocalfunctionTupleType;
   static const size_t                                                               dimDomain = FunctionType::dimDomain;
 
-  typedef typename CellProblemType::ScalarFct                                                        FineFunctionType;
-  typedef typename CellProblemType::PeriodicViewType                                                 FineGridViewType;
-  typedef std::map< std::pair< size_t, size_t >, typename CellProblemType::CellSolutionStorageType > AllSolutionsStorageType;
+  typedef typename CellProblemType::ScalarFct               FineFunctionType;
+  typedef typename CellProblemType::PeriodicViewType        FineGridViewType;
+  typedef typename CellProblemType::CellSolutionStorageType CellSolutionsStorageType;
 }; //class HMMIdentityTraits
 
 
@@ -89,15 +89,15 @@ public:
   typedef typename Traits::DomainFieldType        DomainFieldType;
   static const size_t                             dimDomain = Traits::dimDomain;
 
-  typedef typename Traits::FineFunctionType        FineFunctionType;
-  typedef typename Traits::FineGridViewType        FineGridViewType;
-  typedef typename Traits::AllSolutionsStorageType AllSolutionsStorageType;
+  typedef typename Traits::FineFunctionType         FineFunctionType;
+  typedef typename Traits::FineGridViewType         FineGridViewType;
+  typedef typename Traits::CellSolutionsStorageType CellSolutionsStorageType;
 
-  explicit HMMCurlcurl(const AllSolutionsStorageType& cell_solutions,
+  explicit HMMCurlcurl(const CellProblemType& cell_problem,
                        const FineFunctionType& periodic_mu,
                        const FineFunctionType& periodic_divparam,
                        const FunctionType& macro_mu)
-    : cell_solutions_(cell_solutions)
+    : cell_problem_(cell_problem)
     , periodic_mu_(periodic_mu)
     , periodic_divparam_(periodic_divparam)
     , macro_mu_(macro_mu)
@@ -134,10 +134,10 @@ public:
                 const Stuff::LocalfunctionSetInterface
                     < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
-                const std::pair< size_t, size_t >& key,
+                const EntityType& coarse_entity,
                 Dune::DynamicMatrix< R >& ret) const
   {
-    evaluate(*std::get< 0 >(localFuncs), testBase, ansatzBase, localPoint, key, ret);
+    evaluate(*std::get< 0 >(localFuncs), testBase, ansatzBase, localPoint, coarse_entity, ret);
   }
 
   /// \}
@@ -175,7 +175,7 @@ public:
                 const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
                 const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
-                const std::pair< size_t, size_t >& key,
+                const EntityType& coarse_entity,
                 Dune::DynamicMatrix< R >& ret) const
   {
     typedef typename Stuff::LocalfunctionSetInterface
@@ -198,9 +198,24 @@ public:
     std::vector< RangeType > ansatzcurl(cols, RangeType(0));
     assert(ret.rows()>= rows);
     assert(ret.cols()>= cols);
-    //get the appropriate cell solutions
-    auto local_cell_solutions = cell_solutions_.at(key);
-    auto cube_grid_view = local_cell_solutions[0]->operator[](0).space().grid_view();
+    //prepare cell solutions
+    assert(rows==cols);
+    CellSolutionsStorageType cell_solutions(rows);
+    for (auto& it : cell_solutions) {
+      if (!cell_problem_.is_complex()){
+        std::vector<DiscreteFunction< typename CellProblemType::CellSpaceType, typename CellProblemType::RealVectorType > >
+                it1(1, DiscreteFunction< typename CellProblemType::CellSpaceType, typename CellProblemType::RealVectorType >(cell_problem_.cell_space()));
+        it = DSC::make_unique< typename CellProblemType::CellDiscreteFunctionType >(it1);
+      }
+      else {
+        typename CellProblemType::CellDiscreteFunctionType
+                  it1(2, DiscreteFunction< typename CellProblemType::CellSpaceType, typename CellProblemType::RealVectorType >(cell_problem_.cell_space()));
+        it = DSC::make_unique< typename CellProblemType::CellDiscreteFunctionType >(it1);
+      }
+    }
+    //solve cell reconstructions
+    cell_problem_.solve_all_at_single_point(coarse_entity, cell_solutions, localPoint);
+    auto cube_grid_view = cell_solutions[0]->operator[](0).space().grid_view();
     // perpare ansatz test curls
     for (size_t jj = 0; jj<cols; ++jj) {
       ansatzcurl[jj][0] = aGrad[jj][2][1]-aGrad[jj][1][2];
@@ -221,13 +236,13 @@ public:
       //get quadrature rule
       typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
       typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
-      const size_t integrand_order = local_mu->order() + 2 * (local_cell_solutions[0]->operator[](0).local_function(entity)->order() - 1);
+      const size_t integrand_order = local_mu->order() + 2 * (cell_solutions[0]->operator[](0).local_function(entity)->order() - 1);
       const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(integrand_order));
       // evaluate the jacobians of all local solutions in all quadrature points
       std::vector<std::vector<JacobianRangeType>> allLocalSolutionEvaluations(
-         local_cell_solutions.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
-      for (auto lsNum : DSC::valueRange(local_cell_solutions.size())) {
-        const auto local_cell_function = local_cell_solutions[lsNum]->operator[](0).local_function(entity);
+         cell_solutions.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
+      for (auto lsNum : DSC::valueRange(cell_solutions.size())) {
+        const auto local_cell_function = cell_solutions[lsNum]->operator[](0).local_function(entity);
         local_cell_function->jacobian(volumeQuadrature, allLocalSolutionEvaluations[lsNum]);
       }
       //loop over all quadrature points
@@ -264,10 +279,10 @@ public:
   } // ... evaluate (...)
 
 private:
-  const AllSolutionsStorageType& cell_solutions_;
-  const FineFunctionType&        periodic_mu_;
-  const FineFunctionType&        periodic_divparam_;
-  const FunctionType&            macro_mu_;
+  const CellProblemType&  cell_problem_;
+  const FineFunctionType& periodic_mu_;
+  const FineFunctionType& periodic_divparam_;
+  const FunctionType&     macro_mu_;
 }; //class HMMCurlcurl
 
 
@@ -287,17 +302,17 @@ public:
   typedef typename Traits::DomainFieldType        DomainFieldType;
   static const size_t                             dimDomain = Traits::dimDomain;
 
-  typedef typename Traits::FineFunctionType        FineFunctionType;
-  typedef typename Traits::FineGridViewType        FineGridViewType;
-  typedef typename Traits::AllSolutionsStorageType AllSolutionsStorageType;
+  typedef typename Traits::FineFunctionType         FineFunctionType;
+  typedef typename Traits::FineGridViewType         FineGridViewType;
+  typedef typename Traits::CellSolutionsStorageType CellSolutionsStorageType;
 
-  explicit HMMIdentity(const AllSolutionsStorageType& cell_solutions,
+  explicit HMMIdentity(const CellProblemType& cell_problem,
                        const FineFunctionType& periodic_kappa_real,
                        const FineFunctionType& periodic_kappa_imag,
                        const bool real_part,
                        const FunctionType& macro_kappa_real,
                        const FunctionType& macro_kappa_imag)
-    : cell_solutions_(cell_solutions)
+    : cell_problem_(cell_problem)
     , periodic_kappa_real_(periodic_kappa_real)
     , periodic_kappa_imag_(periodic_kappa_imag)
     , real_part_(real_part)
@@ -336,10 +351,10 @@ public:
                 const Stuff::LocalfunctionSetInterface
                     < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
-                const std::pair< size_t, size_t >& key,
+                const EntityType& coarse_entity,
                 Dune::DynamicMatrix< R >& ret) const
   {
-    evaluate(*std::get< 0 >(localFuncs), *std::get< 1 >(localFuncs), testBase, ansatzBase, localPoint, key, ret);
+    evaluate(*std::get< 0 >(localFuncs), *std::get< 1 >(localFuncs), testBase, ansatzBase, localPoint, coarse_entity, ret);
   }
 
   /// \}
@@ -379,7 +394,7 @@ public:
                 const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
                 const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
-                const std::pair< size_t, size_t >& key,
+                const EntityType& coarse_entity,
                 Dune::DynamicMatrix< R >& ret) const
   {
     typedef typename Stuff::LocalfunctionSetInterface
@@ -398,9 +413,24 @@ public:
     auto aValue = ansatzBase.evaluate(localPoint);
     assert(ret.rows()>= rows);
     assert(ret.cols()>= cols);
-    //get the appropriate cell solutions
-    auto local_cell_solutions = cell_solutions_.at(key);
-    auto cube_grid_view = local_cell_solutions[0]->operator[](0).space().grid_view();
+    //prepare cell solutions
+    assert(rows==cols);
+    CellSolutionsStorageType cell_solutions(rows);
+    for (auto& it : cell_solutions) {
+      if (!cell_problem_.is_complex()){
+        std::vector<DiscreteFunction< typename CellProblemType::CellSpaceType, typename CellProblemType::RealVectorType > >
+                it1(1, DiscreteFunction< typename CellProblemType::CellSpaceType, typename CellProblemType::RealVectorType >(cell_problem_.cell_space()));
+        it = DSC::make_unique< typename CellProblemType::CellDiscreteFunctionType >(it1);
+      }
+      else {
+        typename CellProblemType::CellDiscreteFunctionType
+                  it1(2, DiscreteFunction< typename CellProblemType::CellSpaceType, typename CellProblemType::RealVectorType >(cell_problem_.cell_space()));
+        it = DSC::make_unique< typename CellProblemType::CellDiscreteFunctionType >(it1);
+      }
+    }
+    //solve cell reconstructions
+    cell_problem_.solve_all_at_single_point(coarse_entity, cell_solutions, localPoint);
+    auto cube_grid_view = cell_solutions[0]->operator[](0).space().grid_view();
     auto macro_real_value = localFunctionreal.evaluate(localPoint);
     auto macro_imag_value = localFunctionimag.evaluate(localPoint);
     //integrate over unit cube
@@ -410,16 +440,16 @@ public:
       //get quadrature rule
       typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
       typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
-      const size_t integrand_order = local_kappa_real->order() + 2 * (local_cell_solutions[0]->operator[](0).local_function(entity)->order() - 1);
+      const size_t integrand_order = local_kappa_real->order() + 2 * (cell_solutions[0]->operator[](0).local_function(entity)->order() - 1);
       const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(integrand_order));
       // evaluate the jacobians of all local solutions in all quadrature points
       std::vector<std::vector<JacobianRangeType>> allLocalSolutionEvaluations_real(
-          local_cell_solutions.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
+          cell_solutions.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
       std::vector<std::vector<JacobianRangeType>> allLocalSolutionEvaluations_imag(
-          local_cell_solutions.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
-      for (auto lsNum : DSC::valueRange(local_cell_solutions.size())) {
-        const auto localFunction_real = local_cell_solutions[lsNum]->operator[](0).local_function(entity);
-        const auto localFunction_imag = local_cell_solutions[lsNum]->operator[](1).local_function(entity);
+          cell_solutions.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
+      for (auto lsNum : DSC::valueRange(cell_solutions.size())) {
+        const auto localFunction_real = cell_solutions[lsNum]->operator[](0).local_function(entity);
+        const auto localFunction_imag = cell_solutions[lsNum]->operator[](1).local_function(entity);
         localFunction_real->jacobian(volumeQuadrature, allLocalSolutionEvaluations_real[lsNum]);
         localFunction_imag->jacobian(volumeQuadrature, allLocalSolutionEvaluations_imag[lsNum]);
       }
@@ -468,12 +498,12 @@ public:
   } // ... evaluate (...)
 
 private:
-  const AllSolutionsStorageType& cell_solutions_;
-  const FineFunctionType&        periodic_kappa_real_;
-  const FineFunctionType&        periodic_kappa_imag_;
-  const bool                     real_part_;
-  const FunctionType&            macro_kappa_real_;
-  const FunctionType&            macro_kappa_imag_;
+  const CellProblemType&  cell_problem_;
+  const FineFunctionType& periodic_kappa_real_;
+  const FineFunctionType& periodic_kappa_imag_;
+  const bool              real_part_;
+  const FunctionType&     macro_kappa_real_;
+  const FunctionType&     macro_kappa_imag_;
 }; //class HMMIdentity
 
 }//namespace LocalEvaluation
