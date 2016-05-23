@@ -79,7 +79,8 @@ public:
  * \tparam CellProblemType The type of cell reconstruction to use for the correctors
  */
 template< class FunctionImp, class CellProblemType >
-class HMMCurlcurl                                                          //would like to derive from LocalEvaluationInterface, but method evaluate does not fit
+class HMMCurlcurl
+  : public LocalEvaluation::Codim0Interface< internal::HMMCurlcurlTraits< FunctionImp, CellProblemType >, 2 >
 {
 public:
   typedef internal::HMMCurlcurlTraits< FunctionImp, CellProblemType > Traits;
@@ -134,10 +135,9 @@ public:
                 const Stuff::LocalfunctionSetInterface
                     < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
-                const EntityType& coarse_entity,
                 Dune::DynamicMatrix< R >& ret) const
   {
-    evaluate(*std::get< 0 >(localFuncs), testBase, ansatzBase, localPoint, coarse_entity, ret);
+    evaluate(*std::get< 0 >(localFuncs), testBase, ansatzBase, localPoint, ret);
   }
 
   /// \}
@@ -175,7 +175,6 @@ public:
                 const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
                 const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
-                const EntityType& coarse_entity,
                 Dune::DynamicMatrix< R >& ret) const
   {
     typedef typename Stuff::LocalfunctionSetInterface
@@ -214,7 +213,7 @@ public:
       }
     }
     //solve cell reconstructions
-    cell_problem_.solve_all_at_single_point(coarse_entity, cell_solutions, localPoint);
+    cell_problem_.solve_all_at_single_point(testBase.entity(), cell_solutions, localPoint);
     auto cube_grid_view = cell_solutions[0]->operator[](0).space().grid_view();
     // perpare ansatz test curls
     for (size_t jj = 0; jj<cols; ++jj) {
@@ -292,7 +291,8 @@ private:
  * \tparam CellProblemType Type of cell reconstruction for the correctors
  */
 template< class FunctionImp, class CellProblemType >
-class HMMIdentity                                                                //would like to derive from LocalEvaluationInterface, but method evaluate does not fit
+class HMMIdentity
+  : public LocalEvaluation::Codim0Interface< internal::HMMIdentityTraits< FunctionImp, CellProblemType >, 2 >
 {
 public:
   typedef internal::HMMIdentityTraits< FunctionImp, CellProblemType > Traits;
@@ -351,10 +351,9 @@ public:
                 const Stuff::LocalfunctionSetInterface
                     < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
-                const EntityType& coarse_entity,
                 Dune::DynamicMatrix< R >& ret) const
   {
-    evaluate(*std::get< 0 >(localFuncs), *std::get< 1 >(localFuncs), testBase, ansatzBase, localPoint, coarse_entity, ret);
+    evaluate(*std::get< 0 >(localFuncs), *std::get< 1 >(localFuncs), testBase, ansatzBase, localPoint, ret);
   }
 
   /// \}
@@ -394,7 +393,6 @@ public:
                 const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
                 const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& ansatzBase,
                 const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
-                const EntityType& coarse_entity,
                 Dune::DynamicMatrix< R >& ret) const
   {
     typedef typename Stuff::LocalfunctionSetInterface
@@ -429,7 +427,7 @@ public:
       }
     }
     //solve cell reconstructions
-    cell_problem_.solve_all_at_single_point(coarse_entity, cell_solutions, localPoint);
+    cell_problem_.solve_all_at_single_point(testBase.entity(), cell_solutions, localPoint);
     auto cube_grid_view = cell_solutions[0]->operator[](0).space().grid_view();
     auto macro_real_value = localFunctionreal.evaluate(localPoint);
     auto macro_imag_value = localFunctionimag.evaluate(localPoint);

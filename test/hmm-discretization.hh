@@ -148,11 +148,11 @@ public:
 
       if(!is_pseudo_) {
         //lhs
-        typedef LocalOperator::HMMCodim0Integral< LocalEvaluation::HMMCurlcurl< CellScalarFct, CurlCellReconstruction >, MacroGridViewType > HMMCurlOperator;
-        typedef LocalOperator::HMMCodim0Integral< LocalEvaluation::HMMIdentity< CellScalarFct, EllipticCellReconstruction >, MacroGridViewType > HMMIdOperator;
-        HMMCurlOperator hmmcurl(coarse_space_.grid_view(), curl_cell_, periodic_mu_, divparam_, macro_mu_);
-        HMMIdOperator hmmid_real(coarse_space_.grid_view(), ell_cell_, periodic_kappa_real_, periodic_kappa_imag_, true, macro_kappa_real_, macro_kappa_imag_);
-        HMMIdOperator hmmid_imag(coarse_space_.grid_view(), ell_cell_, periodic_kappa_real_, periodic_kappa_imag_, false, macro_kappa_real_, macro_kappa_imag_);
+        typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMCurlcurl< CellScalarFct, CurlCellReconstruction > > HMMCurlOperator;
+        typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMIdentity< CellScalarFct, EllipticCellReconstruction > > HMMIdOperator;
+        HMMCurlOperator hmmcurl(curl_cell_, periodic_mu_, divparam_, macro_mu_);
+        HMMIdOperator hmmid_real(ell_cell_, periodic_kappa_real_, periodic_kappa_imag_, true, macro_kappa_real_, macro_kappa_imag_);
+        HMMIdOperator hmmid_imag(ell_cell_, periodic_kappa_real_, periodic_kappa_imag_, false, macro_kappa_real_, macro_kappa_imag_);
         LocalAssembler::Codim0Matrix< HMMCurlOperator > hmm_curl_assembler(hmmcurl);
         LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_real_assembler(hmmid_real);
         LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_imag_assembler(hmmid_imag);
