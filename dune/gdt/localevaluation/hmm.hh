@@ -277,12 +277,160 @@ public:
     } //loop over cube entities
   } // ... evaluate (...)
 
-private:
+protected:
   const CellProblemType&  cell_problem_;
   const FineFunctionType& periodic_mu_;
   const FineFunctionType& periodic_divparam_;
   const FunctionType&     macro_mu_;
 }; //class HMMCurlcurl
+
+
+/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the curl-curl part in the HMM for periodic problems
+ *
+ * \tparan FunctionImp The macroscopic type of paramter functions
+ * \tparam CellProblemType The type of cell reconstruction to use for the correctors
+ */
+template< class FunctionImp, class CellProblemType >
+class HMMCurlcurlPeriodic
+  : public HMMCurlcurl< FunctionImp, CellProblemType >
+{
+public:
+  typedef HMMCurlcurl< FunctionImp, CellProblemType > BaseType;
+  using typename BaseType::FunctionType;
+  using typename BaseType::EntityType;
+  using typename BaseType::DomainFieldType;
+  using BaseType::dimDomain;
+  using typename BaseType::FineFunctionType;
+  using typename BaseType::FineGridViewType;
+  using typename BaseType::CellSolutionsStorageType;
+
+  using BaseType::periodic_mu_;
+  using BaseType::periodic_divparam_;
+
+  explicit HMMCurlcurlPeriodic(const CellProblemType& cell_problem,
+                               const FineFunctionType& periodic_mu,
+                               const FineFunctionType& periodic_divparam,
+                               const FunctionType& macro_mu,
+                               const CellSolutionsStorageType& cell_solutions)
+    : BaseType(cell_problem, periodic_mu, periodic_divparam, macro_mu)
+    , cell_solutions_(cell_solutions)
+  {}
+
+  /// \}
+  /// \name Actual implementation of evaluate
+  /// \{
+
+  /**
+    * \brief Computes the HMM curl-curl evaluation for periodic problems
+    * \note Contra-intuitively, we first iterate over the microscopic enities and then over the rows and columns (base size of the macroscopic space),
+    * but in most applications the number of entities is large in comparison to the size of the macroscopic space, so this is much faster
+    * \tparam R RangeFieldType
+    */
+
+  template< class R, size_t r >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, r, 1 >::JacobianRangeType JacobianRangeType;
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, r, 1 >::RangeType         RangeType;
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, r, 1 >::RangeFieldType    RangeFieldType;
+    //clear return matrix
+    ret *= 0.;
+    //evaluate testGradient
+    const size_t rows = testBase.size();
+    std::vector< JacobianRangeType > tGrad(rows, JacobianRangeType(0));
+    testBase.jacobian(localPoint, tGrad);
+    std::vector< RangeType > testcurl(rows, RangeType(0));
+    //evaluate ansatz gradient
+    const size_t cols = ansatzBase.size();
+    std::vector< JacobianRangeType > aGrad(cols, JacobianRangeType(0));
+    ansatzBase.jacobian(localPoint, aGrad);
+    std::vector< RangeType > ansatzcurl(cols, RangeType(0));
+    assert(ret.rows()>= rows);
+    assert(ret.cols()>= cols);
+    assert(cell_solutions_.size()==dimDomain);
+    auto cube_grid_view = cell_solutions_[0]->operator[](0).space().grid_view();
+    // perpare ansatz test curls
+    for (size_t jj = 0; jj<cols; ++jj) {
+      ansatzcurl[jj][0] = aGrad[jj][2][1]-aGrad[jj][1][2];
+      ansatzcurl[jj][1] = aGrad[jj][0][2]-aGrad[jj][2][0];
+      ansatzcurl[jj][2] = aGrad[jj][1][0]-aGrad[jj][0][1];
+    }
+    //prepare test curls
+    for (size_t ii = 0; ii<rows; ++ii) {
+      testcurl[ii][0] = tGrad[ii][2][1]-tGrad[ii][1][2];
+      testcurl[ii][1] = tGrad[ii][0][2]-tGrad[ii][2][0];
+      testcurl[ii][2] = tGrad[ii][1][0]-tGrad[ii][0][1];
+    }
+    auto macro_function_value = localFunction.evaluate(localPoint);
+    //integrate over unit cube
+    for (const auto& entity : DSC::entityRange(cube_grid_view) ) {
+      const auto local_mu = BaseType::periodic_mu_.local_function(entity);
+      const auto local_divparam = BaseType::periodic_divparam_.local_function(entity);
+      //get quadrature rule
+      typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+      typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+      const size_t integrand_order = local_mu->order() + 2 * (cell_solutions_[0]->operator[](0).local_function(entity)->order() - 1);
+      const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(integrand_order));
+      // evaluate the jacobians of all local solutions in all quadrature points
+      std::vector<std::vector<JacobianRangeType>> allLocalSolutionEvaluations(
+         cell_solutions_.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
+      for (auto lsNum : DSC::valueRange(cell_solutions_.size())) {
+        const auto local_cell_function = cell_solutions_[lsNum]->operator[](0).local_function(entity);
+        local_cell_function->jacobian(volumeQuadrature, allLocalSolutionEvaluations[lsNum]);
+      }
+      //loop over all quadrature points
+      const auto quadPointEndIt = volumeQuadrature.end();
+      size_t kk = 0;
+      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
+        const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+        //intergation factors
+        const double integration_factor = entity.geometry().integrationElement(x);
+        const double quadrature_weight = quadPointIt->weight();
+        //evaluate
+        for (size_t ii = 0; ii < rows; ++ii) {
+          auto& retRow = ret[ii];
+          for (size_t jj = 0; jj < cols; ++jj) {
+            auto tmp_result = (macro_function_value * local_mu->evaluate(x));
+            auto allCellCorrecJacobii = allLocalSolutionEvaluations[ii][kk];
+            auto allCellCorrecJacobjj = allLocalSolutionEvaluations[jj][kk];
+            allCellCorrecJacobii *= 0.;
+            allCellCorrecJacobjj *= 0.;
+            for (size_t ll = 0; ll < dimDomain; ++ll){
+              allCellCorrecJacobii.axpy(testcurl[ii][ll], allLocalSolutionEvaluations[ll][kk]);
+              allCellCorrecJacobjj.axpy(ansatzcurl[jj][ll], allLocalSolutionEvaluations[ll][kk]);
+            }
+            tmp_result *= ((ansatzcurl[jj][0] + allCellCorrecJacobjj[2][1] - allCellCorrecJacobjj[1][2])
+                              * (testcurl[ii][0] + allCellCorrecJacobii[2][1] - allCellCorrecJacobii[1][2])
+                            + (ansatzcurl[jj][1] + allCellCorrecJacobjj[0][2] - allCellCorrecJacobjj[2][0])
+                              * (testcurl[ii][1] + allCellCorrecJacobii[0][2] - allCellCorrecJacobii[2][0])
+                            + (ansatzcurl[jj][2] + allCellCorrecJacobjj[1][0] - allCellCorrecJacobjj[0][1])
+                              * (testcurl[ii][2] + allLocalSolutionEvaluations[ii][kk][1][0] - allLocalSolutionEvaluations[ii][kk][0][1]));
+            tmp_result += local_divparam->evaluate(x) * (allCellCorrecJacobjj[0][0] * allCellCorrecJacobii[0][0]
+                                                         + allCellCorrecJacobjj[1][1] * allCellCorrecJacobii[1][1]
+                                                         + allCellCorrecJacobjj[2][2] * allCellCorrecJacobjj[2][2]);
+           /* tmp_result *= ((ansatzcurl[jj][0] + allLocalSolutionEvaluations[jj][kk][2][1] - allLocalSolutionEvaluations[jj][kk][1][2]) * testcurl[ii][0]
+                            + (ansatzcurl[jj][1] + allLocalSolutionEvaluations[jj][kk][0][2] - allLocalSolutionEvaluations[jj][kk][2][0]) * testcurl[ii][1]
+                            + (ansatzcurl[jj][2] + allLocalSolutionEvaluations[jj][kk][1][0] - allLocalSolutionEvaluations[jj][kk][0][1]) * testcurl[ii][2]); */
+            tmp_result *= (quadrature_weight * integration_factor);
+            retRow[jj] += tmp_result;
+          } //loop over cols
+        } //loop over rows
+      } //loop over quadrature points
+    } //loop over cube entities
+  } // ... evaluate (...)
+
+  using BaseType::evaluate;
+
+private:
+  const CellSolutionsStorageType& cell_solutions_;
+}; //class HMMCurlcurlPeriodic
 
 
 /** \brief Class to compute a local evaluation (w.r.t the macroscopic grid) of the identity part of the HMM for curl-curl-problems
@@ -495,7 +643,7 @@ public:
     } //loop over entities
   } // ... evaluate (...)
 
-private:
+protected:
   const CellProblemType&  cell_problem_;
   const FineFunctionType& periodic_kappa_real_;
   const FineFunctionType& periodic_kappa_imag_;
@@ -503,6 +651,159 @@ private:
   const FunctionType&     macro_kappa_real_;
   const FunctionType&     macro_kappa_imag_;
 }; //class HMMIdentity
+
+
+/** \brief Class to compute a local evaluation (w.r.t the macroscopic grid) of the identity part of the HMM for periodic curl-curl-problems
+ *
+ * \tparam FunctionImp Type of the macroscopic parameter function
+ * \tparam CellProblemType Type of cell reconstruction for the correctors
+ */
+template< class FunctionImp, class CellProblemType >
+class HMMIdentityPeriodic
+  : public LocalEvaluation::HMMIdentity< FunctionImp, CellProblemType >
+{
+public:
+  typedef HMMIdentity< FunctionImp, CellProblemType > BaseType;
+  using typename BaseType::FunctionType;
+  using typename BaseType::EntityType;
+  using typename BaseType::DomainFieldType;
+  using BaseType::dimDomain;
+  using typename BaseType::FineFunctionType;
+  using typename BaseType::FineGridViewType;
+  using typename BaseType::CellSolutionsStorageType;
+
+
+  using BaseType::periodic_kappa_real_;
+  using BaseType::periodic_kappa_imag_;
+  using BaseType::real_part_;
+
+  explicit HMMIdentityPeriodic(const CellProblemType& cell_problem,
+                               const FineFunctionType& periodic_kappa_real,
+                               const FineFunctionType& periodic_kappa_imag,
+                               const bool real_part,
+                               const FunctionType& macro_kappa_real,
+                               const FunctionType& macro_kappa_imag,
+                               const CellSolutionsStorageType& cell_solutions)
+    : BaseType(cell_problem, periodic_kappa_real, periodic_kappa_imag, real_part, macro_kappa_real, macro_kappa_imag)
+    , cell_solutions_(cell_solutions)
+  {}
+
+  /// \}
+  /// \name Actual implementation of evaluate
+  /// \{
+
+  /**
+    * \brief Computes the evaluation for the identity part of the HMM for periodic curl-curl-problems
+    * \note Contra-intuitively, we first iterate over the microscopic enities and then over the rows and columns (base size of the macroscopic space),
+    * but in most applications the number of entities is large in comparison to the size of the macroscopic space, so this is much faster
+    * \tparam R RangeFieldType
+    */
+
+  template< class R, size_t r >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunctionreal,
+                const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunctionimag,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, r, 1 >::RangeType         RangeType;
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, r, 1 >::RangeFieldType    RangeFieldType;
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, 1, 1 >::JacobianRangeType JacobianRangeType;
+    //clear return matrix
+    ret *= 0.;
+    //evaluate test functions
+    const size_t rows = testBase.size();
+    auto tValue = testBase.evaluate(localPoint);
+    //evaluate ansatz functions
+    const size_t cols = ansatzBase.size();
+    auto aValue = ansatzBase.evaluate(localPoint);
+    assert(ret.rows()>= rows);
+    assert(ret.cols()>= cols);
+    assert(cell_solutions_.size()==dimDomain);
+    auto cube_grid_view = cell_solutions_[0]->operator[](0).space().grid_view();
+    auto macro_real_value = localFunctionreal.evaluate(localPoint);
+    auto macro_imag_value = localFunctionimag.evaluate(localPoint);
+    //integrate over unit cube
+    for (const auto& entity : DSC::entityRange(cube_grid_view) ) {
+      const auto local_kappa_real = periodic_kappa_real_.local_function(entity);
+      const auto local_kappa_imag = periodic_kappa_imag_.local_function(entity);
+      //get quadrature rule
+      typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+      typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+      const size_t integrand_order = local_kappa_real->order() + 2 * (cell_solutions_[0]->operator[](0).local_function(entity)->order() - 1);
+      const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(integrand_order));
+      // evaluate the jacobians of all local solutions in all quadrature points
+      std::vector<std::vector<JacobianRangeType>> allLocalSolutionEvaluations_real(
+          cell_solutions_.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
+      std::vector<std::vector<JacobianRangeType>> allLocalSolutionEvaluations_imag(
+          cell_solutions_.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
+      for (auto lsNum : DSC::valueRange(cell_solutions_.size())) {
+        const auto localFunction_real = cell_solutions_[lsNum]->operator[](0).local_function(entity);
+        const auto localFunction_imag = cell_solutions_[lsNum]->operator[](1).local_function(entity);
+        localFunction_real->jacobian(volumeQuadrature, allLocalSolutionEvaluations_real[lsNum]);
+        localFunction_imag->jacobian(volumeQuadrature, allLocalSolutionEvaluations_imag[lsNum]);
+      }
+      //loop over all quadrature points
+      const auto quadPointEndIt = volumeQuadrature.end();
+      size_t kk = 0;
+      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
+        const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+        //intergation factors
+        const double integration_factor = entity.geometry().integrationElement(x);
+        const double quadrature_weight = quadPointIt->weight();
+        //evaluate
+        auto value_real = (macro_real_value * local_kappa_real->evaluate(x));
+        auto value_imag = (macro_imag_value * local_kappa_imag->evaluate(x));
+        for (size_t ii = 0; ii<rows; ++ii) {
+          auto& retRow = ret[ii];
+          for (size_t jj = 0; jj< cols; ++jj) {
+            auto reconii_real = tValue[ii];
+            auto reconii_imag = reconii_real;
+            reconii_imag *= 0.;
+            auto reconjj_real = aValue[jj];
+            auto reconjj_imag = reconjj_real;
+            reconjj_imag *= 0.;
+            for (size_t ll = 0; ll< dimDomain; ++ll){
+              reconii_real.axpy(tValue[ii][ll], allLocalSolutionEvaluations_real[ll][kk][0]); //hopefully does the right thing
+              reconii_imag.axpy(tValue[ii][ll], allLocalSolutionEvaluations_imag[ll][kk][0]);
+              reconjj_real.axpy(tValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
+              reconii_imag.axpy(tValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
+            }
+            if (real_part_) {
+              auto tmp_result = value_real * (reconjj_real * reconii_real);
+              tmp_result += value_real * (reconjj_imag * reconii_imag);
+              tmp_result += value_imag * (reconjj_real * reconii_imag);
+              tmp_result -= value_imag * (reconjj_imag * reconii_real);
+              /*auto tmp_result = value_real * (reconjj_real * tValue[ii]);
+              tmp_result -= value_imag*(reconjj_imag * tValue[ii]); */
+              tmp_result *= (quadrature_weight * integration_factor);
+              retRow[jj] += tmp_result;
+            }
+            else {
+              auto tmp_result = value_imag * (reconjj_imag * reconii_imag);
+              tmp_result += value_imag * (reconjj_real * reconii_real);
+              tmp_result += value_real * (reconjj_imag * reconii_real);
+              tmp_result -= value_real * (reconjj_real * reconii_imag);
+              /*auto tmp_result = value_imag * (reconjj_real * tValue[ii]);
+              tmp_result += value_real * (reconjj_imag * tValue[ii]);*/
+              tmp_result *= (quadrature_weight * integration_factor);
+              retRow[jj] += tmp_result;
+            }
+          } //loop over cols
+        } //loop over rows
+      } //loop over micro quadrature points
+    } //loop over entities
+  } // ... evaluate (...)
+
+  using BaseType::evaluate;
+
+private:
+  const CellSolutionsStorageType& cell_solutions_;
+}; //class HMMIdentityPeriodic
 
 }//namespace LocalEvaluation
 }//namespace GDT

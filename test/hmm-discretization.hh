@@ -76,8 +76,8 @@ public:
   typedef typename CurlCellReconstruction::ScalarFct                                                    CellScalarFct;
   typedef Dune::Stuff::Functions::Constant< CellEntityType, CellDomainFieldType, dimDomain, double, 1 > CellConstFct;
 
-  typedef std::map< std::pair< size_t, size_t >, typename CurlCellReconstruction::CellSolutionStorageType >     AllCurlSolutionsStorageType;
-  typedef std::map< std::pair< size_t, size_t >, typename EllipticCellReconstruction::CellSolutionStorageType > AllIdSolutionsStorageType;
+  typedef typename CurlCellReconstruction::CellSolutionStorageType      AllCurlSolutionsStorageType;
+  typedef typename EllipticCellReconstruction::CellSolutionStorageType  AllIdSolutionsStorageType;
 
   CurlHMMDiscretization(const MacroGridViewType& macrogridview,
                         CellGridType& cellgrid,
@@ -92,7 +92,7 @@ public:
                         const MacroScalarFct& mu_macro = MacroConstFct(1.0),
                         const MacroScalarFct& kappa_real_macro = MacroConstFct(1.0),
                         const MacroScalarFct& kappa_imag_macro = MacroConstFct(1.0),
-                        const bool is_pseudo = false)
+                        const bool is_periodic = true)
     : coarse_space_(macrogridview)
     , bdry_info_(info)
     , macro_mu_(mu_macro)
@@ -107,7 +107,7 @@ public:
     , stabil_param_(stabil)
     , curl_cell_(coarse_space_, cellgrid, periodic_mu_, divparam_, stabil_param_)
     , ell_cell_(coarse_space_, cellgrid, periodic_kappa_real_, periodic_kappa_imag_, stabil_param_)
-    , is_pseudo_(is_pseudo)
+    , is_periodic_(is_periodic)
     , is_assembled_(false)
     , system_matrix_real_(0,0)
     , system_matrix_imag_(0,0)
@@ -146,7 +146,7 @@ public:
       Spaces::DirichletConstraints< typename MacroGridViewType::Intersection >
               dirichlet_constraints(bdry_info_, coarse_space_.mapper().size());
 
-      if(!is_pseudo_) {
+      if(!is_periodic_) {
         //lhs
         typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMCurlcurl< CellScalarFct, CurlCellReconstruction > > HMMCurlOperator;
         typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMIdentity< CellScalarFct, EllipticCellReconstruction > > HMMIdOperator;
@@ -159,44 +159,44 @@ public:
         walker.add(hmm_curl_assembler, system_matrix_real_);
         walker.add(hmm_id_real_assembler, system_matrix_real_);
         walker.add(hmm_id_imag_assembler, system_matrix_imag_);
-
-        //assemble Dirichlet constraints
-        walker.add(dirichlet_constraints);
-        std::cout<< "macro assembly" <<std::endl;
-        walker.assemble();
       }
       else {
-        auto effective_mu = curl_cell_.effective_matrix();
-        auto effective_kappa = ell_cell_.effective_matrix();
-        auto effective_kappa_real = effective_kappa[0];
-        auto effective_kappa_imag = effective_kappa[1];
-        //the effective matrices have to be cast into constant macro functions
-        typedef Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimDomain, dimDomain > MatrixFct;
-        MatrixFct eff_mu_fct(effective_mu);
-        MatrixFct eff_kappa_real_fct(effective_kappa_real);
-        MatrixFct eff_kappa_imag_fct(effective_kappa_imag);
-        typedef Stuff::Functions::Product< MacroScalarFct, MatrixFct > ProductFct;
-        ProductFct kappa_real_fct(macro_kappa_real_, eff_kappa_real_fct, "stuff.functions.product");
-        ProductFct kappa_imag_fct(macro_kappa_imag_, eff_kappa_imag_fct, "stuff.functions.product");
+        //solve cell problems
+        AllCurlSolutionsStorageType curl_cell_solutions(dimDomain);
+          for (auto& it : curl_cell_solutions) {
+            std::vector<DiscreteFunction< typename CurlCellReconstruction::CellSpaceType, RealVectorType > >
+                    it1(1, DiscreteFunction< typename CurlCellReconstruction::CellSpaceType, RealVectorType >(curl_cell_.cell_space()));
+            it = DSC::make_unique< typename CurlCellReconstruction::CellDiscreteFunctionType >(it1);
+          }
+        std::cout<< "computing curl cell problems"<< std::endl;
+        curl_cell_.compute_cell_solutions(curl_cell_solutions);
+        AllIdSolutionsStorageType ell_cell_solutions(dimDomain);
+          for (auto& it : ell_cell_solutions) {
+            std::vector<DiscreteFunction< typename EllipticCellReconstruction::CellSpaceType, RealVectorType > >
+                    it1(2, DiscreteFunction< typename EllipticCellReconstruction::CellSpaceType, RealVectorType >(ell_cell_.cell_space()));
+            it = DSC::make_unique< typename EllipticCellReconstruction::CellDiscreteFunctionType >(it1);
+          }
+        std::cout<< "computing identity cell problems"<< std::endl;
+        ell_cell_.compute_cell_solutions(ell_cell_solutions);
 
-        //assemble macro lhs
-        typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< MacroScalarFct, MatrixFct > > CurlOpType;
-        const CurlOpType curlop(macro_mu_, eff_mu_fct);
-        const LocalAssembler::Codim0Matrix< CurlOpType > curlMatrixAssembler(curlop);
-        walker.add(curlMatrixAssembler, system_matrix_real_);
-        typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< ProductFct > > IdOperatorType;
-        const IdOperatorType idop1(kappa_real_fct);
-        const IdOperatorType idop2(kappa_imag_fct);
-        const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler1(idop1);
-        const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler2(idop2);
-        walker.add(idMatrixAssembler1, system_matrix_real_);
-        walker.add(idMatrixAssembler2, system_matrix_imag_);
-
-        //assemble Dirichlet constraints
-        walker.add(dirichlet_constraints);
-        std::cout<< "macro assembly" <<std::endl;
-        walker.assemble();
+        //lhs
+        typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMCurlcurlPeriodic< CellScalarFct, CurlCellReconstruction > > HMMCurlOperator;
+        typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMIdentityPeriodic< CellScalarFct, EllipticCellReconstruction > > HMMIdOperator;
+        HMMCurlOperator hmmcurl(curl_cell_, periodic_mu_, divparam_, macro_mu_, curl_cell_solutions);
+        HMMIdOperator hmmid_real(ell_cell_, periodic_kappa_real_, periodic_kappa_imag_, true, macro_kappa_real_, macro_kappa_imag_, ell_cell_solutions);
+        HMMIdOperator hmmid_imag(ell_cell_, periodic_kappa_real_, periodic_kappa_imag_, false, macro_kappa_real_, macro_kappa_imag_, ell_cell_solutions);
+        LocalAssembler::Codim0Matrix< HMMCurlOperator > hmm_curl_assembler(hmmcurl);
+        LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_real_assembler(hmmid_real);
+        LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_imag_assembler(hmmid_imag);
+        walker.add(hmm_curl_assembler, system_matrix_real_);
+        walker.add(hmm_id_real_assembler, system_matrix_real_);
+        walker.add(hmm_id_imag_assembler, system_matrix_imag_);
       }
+
+      //assemble Dirichlet constraints
+      walker.add(dirichlet_constraints);
+      std::cout<< "macro assembly" <<std::endl;
+      walker.assemble();
 
       //apply the homogenous (!) Dirichlet constraints on the macro grid
       dirichlet_constraints.apply(system_matrix_real_, rhs_vector_real_);
@@ -440,7 +440,7 @@ private:
   const CellScalarFct&                stabil_param_;
   const CurlCellReconstruction        curl_cell_;
   const EllipticCellReconstruction    ell_cell_;
-  const bool                          is_pseudo_;
+  const bool                          is_periodic_;
   mutable bool                        is_assembled_;
   mutable RealMatrixType              system_matrix_real_;
   mutable RealMatrixType              system_matrix_imag_;
