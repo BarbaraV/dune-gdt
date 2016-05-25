@@ -45,6 +45,9 @@
 #include <dune/gdt/spaces/cg/pdelab.hh>
 #include <dune/gdt/operators/elliptic-cg.hh>
 
+//forward
+template< class CoarseFunctionImp, class MicroFunctionImp >
+class LocalPeriodicCorrector;
 
 template< class MacroGridViewType, class CellGridType, int polynomialOrder >
 class CurlHMMDiscretization {
@@ -75,6 +78,9 @@ public:
   typedef typename CurlCellReconstruction::DomainFieldType                                              CellDomainFieldType;
   typedef typename CurlCellReconstruction::ScalarFct                                                    CellScalarFct;
   typedef Dune::Stuff::Functions::Constant< CellEntityType, CellDomainFieldType, dimDomain, double, 1 > CellConstFct;
+
+  typedef Dune::GDT::DiscreteFunction< typename CurlCellReconstruction::CellSpaceType, RealVectorType >          CurlCellDiscreteFctType;
+  typedef Dune::GDT::DiscreteFunction< typename EllipticCellReconstruction::CellSpaceType, RealVectorType >      EllCellDiscreteFctType;
 
   typedef typename CurlCellReconstruction::CellSolutionStorageType      AllCurlSolutionsStorageType;
   typedef typename EllipticCellReconstruction::CellSolutionStorageType  AllIdSolutionsStorageType;
@@ -246,6 +252,56 @@ public:
       assemble();
     Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
     solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+  }
+
+  void solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution,
+                         LocalPeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >& curl_corrector,
+                         LocalPeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType >& id_corrector)
+  {
+    if(!is_periodic_)
+      DUNE_THROW(Dune::NotImplemented, "Computation of correctors for non-periodic HMM not implemented yet");
+    if (!is_assembled_)
+      assemble();
+    VectorType solution(coarse_space_.mapper().size());
+    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
+    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+
+    //get real and imaginary part and make discrete functions
+    RealVectorType solution_real(coarse_space_.mapper().size());
+    RealVectorType solution_imag(coarse_space_.mapper().size());
+    solution_real.backend() = solution.backend().real();
+    solution_imag.backend() = solution.backend().imag();
+    assert(macro_solution.size() > 1);
+    macro_solution[0].vector() = solution_real;
+    macro_solution[1].vector() = solution_imag;
+
+    //compute cell problems
+    AllCurlSolutionsStorageType curl_cell_solutions(dimDomain);
+    for (auto& it : curl_cell_solutions) {
+      std::vector< CurlCellDiscreteFctType >it1(1, CurlCellDiscreteFctType(curl_cell_.cell_space()));
+      it = DSC::make_unique< typename CurlCellReconstruction::CellDiscreteFunctionType >(it1);
+    }
+    std::cout<< "computing curl cell problems"<< std::endl;
+    curl_cell_.compute_cell_solutions(curl_cell_solutions);
+    AllIdSolutionsStorageType ell_cell_solutions(dimDomain);
+    for (auto& it : ell_cell_solutions) {
+      std::vector< EllCellDiscreteFctType>it1(2, EllCellDiscreteFctType(ell_cell_.cell_space()));
+      it = DSC::make_unique< typename EllipticCellReconstruction::CellDiscreteFunctionType >(it1);
+    }
+    std::cout<< "computing identity cell problems"<< std::endl;
+    ell_cell_.compute_cell_solutions(ell_cell_solutions);
+
+    std::vector< std::vector< CurlCellDiscreteFctType > > curl_cell_functions(dimDomain, std::vector< CurlCellDiscreteFctType >(1, CurlCellDiscreteFctType(curl_cell_.cell_space())));
+    std::vector< std::vector< EllCellDiscreteFctType > > ell_cell_functions(dimDomain, std::vector< EllCellDiscreteFctType >(2, EllCellDiscreteFctType(ell_cell_.cell_space())));
+    for (size_t ii = 0; ii < dimDomain; ++ii){
+      curl_cell_functions[ii][0].vector() = curl_cell_solutions[ii]->operator[](0).vector();
+      ell_cell_functions[ii][0].vector() = ell_cell_solutions[ii]->operator[](0).vector();
+      ell_cell_functions[ii][1].vector() = ell_cell_solutions[ii]->operator[](1).vector();
+    }
+
+    //build correctors
+    curl_corrector = LocalPeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >(macro_solution, curl_cell_functions);
+    id_corrector = LocalPeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType >(macro_solution, ell_cell_functions);
   }
 
   /**
@@ -448,6 +504,85 @@ private:
   mutable RealVectorType              rhs_vector_real_;
   mutable RealVectorType              rhs_vector_imag_;
   mutable VectorType                  rhs_vector_;
+};
+
+
+template< class CoarseFunctionImp, class MicroFunctionImp >
+class LocalPeriodicCorrector {
+public:
+  static_assert(Dune::Stuff::is_localizable_function< CoarseFunctionImp >::value, "Macro Function has to be localizable");
+  static_assert(Dune::Stuff::is_localizable_function< MicroFunctionImp >::value, "Functiontype for cell solutions has to be localizable");
+
+  typedef typename CoarseFunctionImp::EntityType CoarseEntityType;
+  typedef typename CoarseFunctionImp::DomainType CoarseDomainType;
+  typedef typename MicroFunctionImp::EntityType  FineEntityType;
+
+  static_assert(std::is_same< typename CoarseFunctionImp::DomainFieldType, typename MicroFunctionImp::DomainFieldType >::value,
+                "DomainFieldType has to be the same for macro and micro part");
+  static_assert(CoarseFunctionImp::dimDomain == MicroFunctionImp::dimDomain, "Dimensions do not match");
+
+  typedef typename CoarseFunctionImp::DomainFieldType DomainFieldType;
+  static const size_t                                 dimDomain = CoarseFunctionImp::dimDomain;
+
+  typedef Dune::Stuff::Functions::Constant< FineEntityType, DomainFieldType, dimDomain, typename CoarseFunctionImp::RangeFieldType, 1 > ConstantFineScalarFunctionType;
+  typedef Dune::Stuff::Functions::Product< ConstantFineScalarFunctionType, MicroFunctionImp >                                           CorrectorFunctionType;
+
+  LocalPeriodicCorrector(const std::vector< CoarseFunctionImp >& macro_part,
+                         const std::vector< std::vector< MicroFunctionImp > >& cell_solutions)
+    : macro_part_(macro_part)
+    , cell_solutions_(cell_solutions)
+  {}
+
+  LocalPeriodicCorrector() = default;
+
+  size_t order() const
+  {
+    return macro_part_[0].order();
+  }
+
+  std::vector< CorrectorFunctionType > evaluate(const CoarseDomainType& xx)
+  {
+    auto macro_real = macro_part_[0].evaluate(xx);
+    typename CoarseFunctionImp::RangeType macro_imag;
+    if (macro_part_.size() > 1)
+      macro_imag = macro_part_[1].evaluate(xx);
+    assert(macro_real.size() == cell_solutions_.size());
+    ConstantFineScalarFunctionType macro_real_component(macro_real[0]);
+    CorrectorFunctionType corrector_real(macro_real_component, cell_solutions_[0][0]);
+    CorrectorFunctionType corrector_imag = corrector_real;
+    if (macro_part_.size() > 1) {
+      ConstantFineScalarFunctionType macro_imag_component(macro_imag[0]);
+      CorrectorFunctionType imag_real(macro_imag_component, cell_solutions_[0][0]);
+      corrector_imag = imag_real;
+      if (cell_solutions_[0].size() > 1) {
+        CorrectorFunctionType real_imag(macro_real_component, cell_solutions_[0][1]);
+        CorrectorFunctionType imag_imag(macro_imag_component, cell_solutions_[0][1]);
+        corrector_real = corrector_real - imag_imag;
+        corrector_imag = corrector_imag + real_imag;
+      }
+    }
+    for (size_t ii = 1; ii < cell_solutions_.size(); ++ii) {
+      ConstantFineScalarFunctionType macro_real_component_new(macro_real[ii]);
+      CorrectorFunctionType real_real(macro_real_component_new, cell_solutions_[ii][0]);
+      if (macro_part_.size() > 1) {
+        ConstantFineScalarFunctionType macro_imag_component(macro_imag[ii]);
+        CorrectorFunctionType imag_real(macro_imag_component, cell_solutions_[ii][0]);
+        corrector_imag = corrector_imag + imag_real;
+        corrector_real = corrector_real + real_real;
+        if (cell_solutions_[ii].size() > 1) {
+          CorrectorFunctionType real_imag(macro_real_component_new, cell_solutions_[ii][1]);
+          CorrectorFunctionType imag_imag(macro_imag_component, cell_solutions_[ii][1]);
+          corrector_real = corrector_real - imag_imag;
+          corrector_imag = corrector_imag + real_imag;
+        }
+      }
+    }
+    return std::vector< CorrectorFunctionType >({corrector_real, corrector_imag});
+  }
+
+private:
+  std::vector< CoarseFunctionImp > macro_part_;
+  std::vector< std::vector< MicroFunctionImp > > cell_solutions_;
 };
 
 
