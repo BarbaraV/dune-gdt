@@ -47,7 +47,9 @@
 
 //forward
 template< class CoarseFunctionImp, class MicroFunctionImp >
-class LocalPeriodicCorrector;
+class PeriodicCorrector;
+template< class CoarseFunctionImp, class MicroFunctionImp >
+class PeriodicCorrectorLocal;
 
 template< class MacroGridViewType, class CellGridType, int polynomialOrder >
 class CurlHMMDiscretization {
@@ -127,6 +129,17 @@ public:
   {
     return coarse_space_;
   }
+
+  const typename EllipticCellReconstruction::CellSpaceType& ell_cell_space() const
+  {
+    return ell_cell_.cell_space();
+  }
+
+  const typename CurlCellReconstruction::CellSpaceType& curl_cell_space() const
+  {
+    return curl_cell_.cell_space();
+  }
+
 
   void assemble() const
   {
@@ -254,9 +267,8 @@ public:
     solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
   }
 
-  void solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution,
-                         LocalPeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >& curl_corrector,
-                         LocalPeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType >& id_corrector)
+  std::pair< PeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >, PeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType > >
+    solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution)
   {
     if(!is_periodic_)
       DUNE_THROW(Dune::NotImplemented, "Computation of correctors for non-periodic HMM not implemented yet");
@@ -300,8 +312,97 @@ public:
     }
 
     //build correctors
-    curl_corrector = LocalPeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >(macro_solution, curl_cell_functions);
-    id_corrector = LocalPeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType >(macro_solution, ell_cell_functions);
+    return std::make_pair(PeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >(macro_solution, curl_cell_functions, "curl"),
+                          PeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType >(macro_solution, ell_cell_functions, "id"));
+  }
+
+  template< class ExpectedMacroFctType, class ExpectedMicroFctType, class DiscreteMacroFctType, class DiscreteMicroFctType >
+  RangeFieldType corrector_error(std::vector< ExpectedMacroFctType >& expected_macro_part,
+                                 std::vector< std::vector< ExpectedMicroFctType > >& expected_cell_solutions,
+                                 PeriodicCorrector< DiscreteMacroFctType, DiscreteMicroFctType >& discrete_corrector,
+                                 std::string type)
+  {
+    RangeFieldType result = 0;
+    RangeFieldType cube_result = 0;
+    typename ExpectedMicroFctType::JacobianRangeType micro_real(0);
+    typename ExpectedMicroFctType::JacobianRangeType micro_imag(0);
+    for (auto& macro_entity : DSC::entityRange(coarse_space_.grid_view())) {
+      auto expected_macro_local_real = expected_macro_part[0].local_function(macro_entity);
+      auto expected_macro_local_imag = expected_macro_part[1].local_function(macro_entity);
+      auto discrete_correc_macro_local = discrete_corrector.local_function(macro_entity);
+      size_t integrand_order = boost::numeric_cast< size_t >(2* std::max(ssize_t(expected_macro_local_real->order()), ssize_t(discrete_correc_macro_local->order())));
+      typedef Dune::QuadratureRules< MacroDomainFieldType, dimDomain > VolumeQuadratureRules;
+      typedef Dune::QuadratureRule< MacroDomainFieldType, dimDomain > VolumeQuadratureType;
+      const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(macro_entity.type(), boost::numeric_cast<int>(integrand_order));
+      //loop over all quadrature points
+      const auto quadPointEndIt = volumeQuadrature.end();
+      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
+        const Dune::FieldVector< MacroDomainFieldType, dimDomain > xx = quadPointIt->position();
+        //integration factors
+        const double integration_factor = macro_entity.geometry().integrationElement(xx);
+        const double quadrature_weight = quadPointIt->weight();
+        auto expected_macro_value_real = expected_macro_local_real->evaluate(xx);
+        auto expected_macro_value_imag = expected_macro_local_imag->evaluate(xx);
+        std::vector< DiscreteMicroFctType > discrete_correc_macro(2, DiscreteMicroFctType(discrete_corrector.cell_space()));
+        discrete_correc_macro_local->evaluate(xx, discrete_correc_macro);
+        cube_result *= 0;
+        //loop over micro entities
+        for (auto& micro_entity : DSC::entityRange(ell_cell_.cell_space().grid_view())) {
+          auto local_discrete_correc_real = discrete_correc_macro[0].local_function(micro_entity);
+          auto local_discrete_correc_imag = discrete_correc_macro[1].local_function(micro_entity);
+          size_t integrand_order_micro = boost::numeric_cast< size_t >
+                                        (2* std::max(ssize_t(expected_cell_solutions[0][0].local_function(micro_entity)->order()), ssize_t(local_discrete_correc_real->order())));
+          typedef Dune::QuadratureRules< CellDomainFieldType, dimDomain > VolumeQuadratureRulesMicro;
+          typedef Dune::QuadratureRule< CellDomainFieldType, dimDomain > VolumeQuadratureTypeMicro;
+          const VolumeQuadratureTypeMicro& volumeQuadrature_micro = VolumeQuadratureRulesMicro::rule(micro_entity.type(), boost::numeric_cast<int>(integrand_order_micro));
+          //loop over all microscopic quadrature points
+          const auto quadPointEndIt_micro = volumeQuadrature_micro.end();
+          for (auto quadPointIt_micro = volumeQuadrature_micro.begin(); quadPointIt_micro != quadPointEndIt_micro; ++quadPointIt_micro) {
+            const auto yy = quadPointIt_micro->position();
+            //integration factors
+            const double integration_factor_micro = micro_entity.geometry().integrationElement(yy);
+            const double quadrature_weight_micro = quadPointIt_micro->weight();
+            //evaluate
+            micro_real *= 0;
+            micro_imag *= 0;
+            //evaluate
+            for (size_t jj = 0; jj < dimDomain; ++jj) {
+              auto jacob_real = expected_cell_solutions[jj][0].local_function(micro_entity)->jacobian(yy);
+              auto jacob_real1 = jacob_real;
+              jacob_real *= expected_macro_value_real[jj];
+              jacob_real1 *= expected_macro_value_imag[jj];
+              auto jacob_imag = expected_cell_solutions[jj][1].local_function(micro_entity)->jacobian(yy);
+              auto jacob_imag1 = jacob_imag;
+              jacob_imag *= expected_macro_value_imag[jj];
+              jacob_imag1 *= expected_macro_value_real[jj];
+              micro_real += jacob_real;
+              micro_real -= jacob_imag;
+              micro_imag += jacob_real1;
+              micro_imag += jacob_imag1;
+            }
+            micro_real -= local_discrete_correc_real->jacobian(yy);
+            micro_imag -= local_discrete_correc_imag->jacobian(yy);
+            //compute local contribution to the norm
+            if(type == "id")
+              cube_result += quadrature_weight_micro * integration_factor_micro * (micro_real[0].two_norm2() + micro_imag[0].two_norm2());
+            else if(type == "id_real")
+              cube_result += quadrature_weight_micro * integration_factor_micro * micro_real[0].two_norm2();
+            else if(type == "id_imag")
+              cube_result += quadrature_weight_micro * integration_factor_micro * micro_imag[0].two_norm2();
+            else if(type == "curl")
+              cube_result += quadrature_weight_micro * integration_factor_micro * (micro_real.frobenius_norm2() + micro_imag.frobenius_norm2());
+            else if(type == "curl_real")
+              cube_result += quadrature_weight_micro * integration_factor_micro * micro_real.frobenius_norm2();
+            else if(type == "curl_imag")
+              cube_result += quadrature_weight_micro * integration_factor_micro * micro_imag.frobenius_norm2();
+            else
+              DUNE_THROW(Dune::NotImplemented, "This type of norm is not implemented");
+            }//loop over micro quadrature points
+          }//loop over micro entities
+          result += quadrature_weight * integration_factor * cube_result;
+        } //loop over macro quadrature points
+      }//loop over macro entities
+      return std::sqrt(result);
   }
 
   /**
@@ -508,7 +609,64 @@ private:
 
 
 template< class CoarseFunctionImp, class MicroFunctionImp >
-class LocalPeriodicCorrector {
+class PeriodicCorrector {
+public:
+  static_assert(Dune::GDT::is_const_discrete_function< CoarseFunctionImp >::value, "Macro Function has to be a discrete function");
+  static_assert(Dune::GDT::is_discrete_function< MicroFunctionImp >::value, "Functiontype for cell solutions has to be discrete");
+
+  typedef typename CoarseFunctionImp::EntityType CoarseEntityType;
+  typedef typename CoarseFunctionImp::DomainType CoarseDomainType;
+  typedef typename MicroFunctionImp::EntityType  FineEntityType;
+
+  static_assert(std::is_same< typename CoarseFunctionImp::DomainFieldType, typename MicroFunctionImp::DomainFieldType >::value,
+                "DomainFieldType has to be the same for macro and micro part");
+  static_assert(CoarseFunctionImp::dimDomain == MicroFunctionImp::dimDomain, "Dimensions do not match");
+
+  typedef typename CoarseFunctionImp::DomainFieldType DomainFieldType;
+  static const size_t                                 dimDomain = CoarseFunctionImp::dimDomain;
+
+  typedef PeriodicCorrectorLocal< CoarseFunctionImp, MicroFunctionImp > LocalfunctionType;
+
+  PeriodicCorrector(const std::vector< CoarseFunctionImp >& macro_part,
+                    const std::vector< std::vector< MicroFunctionImp > >& cell_solutions,
+                    const std::string& type)
+    : macro_part_(macro_part)
+    , cell_solutions_(cell_solutions)
+    , type_(type)
+  {}
+
+  PeriodicCorrector(const typename CoarseFunctionImp::SpaceType& coarse_space,
+                    const typename MicroFunctionImp::SpaceType& fine_space,
+                    const std::string& type)
+    : macro_part_(2, CoarseFunctionImp(coarse_space))
+    , cell_solutions_(dimDomain, std::vector< MicroFunctionImp >(2, MicroFunctionImp(fine_space)))
+    , type_(type)
+  {}
+
+  std::unique_ptr< LocalfunctionType > local_function(const CoarseEntityType& coarse_entity)
+  {
+    return DSC::make_unique< LocalfunctionType >(macro_part_, cell_solutions_, type_, coarse_entity);
+  }
+
+  const typename CoarseFunctionImp::SpaceType& coarse_space() const
+  {
+    return macro_part_[0].space();
+  }
+
+  const typename MicroFunctionImp::SpaceType& cell_space() const
+  {
+    return cell_solutions_[0][0].space();
+  }
+
+private:
+  const std::vector< CoarseFunctionImp > macro_part_;
+  const std::vector< std::vector< MicroFunctionImp > > cell_solutions_;
+  const std::string type_;
+};
+
+
+template< class CoarseFunctionImp, class MicroFunctionImp >
+class PeriodicCorrectorLocal {
 public:
   static_assert(Dune::Stuff::is_localizable_function< CoarseFunctionImp >::value, "Macro Function has to be localizable");
   static_assert(Dune::Stuff::is_localizable_function< MicroFunctionImp >::value, "Functiontype for cell solutions has to be localizable");
@@ -524,65 +682,75 @@ public:
   typedef typename CoarseFunctionImp::DomainFieldType DomainFieldType;
   static const size_t                                 dimDomain = CoarseFunctionImp::dimDomain;
 
-  typedef Dune::Stuff::Functions::Constant< FineEntityType, DomainFieldType, dimDomain, typename CoarseFunctionImp::RangeFieldType, 1 > ConstantFineScalarFunctionType;
-  typedef Dune::Stuff::Functions::Product< ConstantFineScalarFunctionType, MicroFunctionImp >                                           CorrectorFunctionType;
-
-  LocalPeriodicCorrector(const std::vector< CoarseFunctionImp >& macro_part,
-                         const std::vector< std::vector< MicroFunctionImp > >& cell_solutions)
+  PeriodicCorrectorLocal(const std::vector< CoarseFunctionImp > & macro_part,
+                         const std::vector< std::vector< MicroFunctionImp > >& cell_solutions,
+                         const std::string& type,
+                         const CoarseEntityType& coarse_entity)
     : macro_part_(macro_part)
     , cell_solutions_(cell_solutions)
+    , type_(type)
+    , entity_(coarse_entity)
   {}
-
-  LocalPeriodicCorrector() = default;
 
   size_t order() const
   {
-    return macro_part_[0].order();
+    if (type_ == "id")
+      return macro_part_[0].local_function(entity_)->order();
+    if (type_ == "curl")
+      return boost::numeric_cast< size_t >(std::max(ssize_t(macro_part_[0].local_function(entity_)->order() -1), ssize_t(0)));
+    else
+      DUNE_THROW(Dune::NotImplemented, "This type of corrector needs to be implemented");
   }
 
-  std::vector< CorrectorFunctionType > evaluate(const CoarseDomainType& xx)
+
+  void evaluate(const CoarseDomainType& xx, std::vector< MicroFunctionImp >& ret) const
   {
-    auto macro_real = macro_part_[0].evaluate(xx);
-    typename CoarseFunctionImp::RangeType macro_imag;
-    if (macro_part_.size() > 1)
-      macro_imag = macro_part_[1].evaluate(xx);
-    assert(macro_real.size() == cell_solutions_.size());
-    ConstantFineScalarFunctionType macro_real_component(macro_real[0]);
-    CorrectorFunctionType corrector_real(macro_real_component, cell_solutions_[0][0]);
-    CorrectorFunctionType corrector_imag = corrector_real;
-    if (macro_part_.size() > 1) {
-      ConstantFineScalarFunctionType macro_imag_component(macro_imag[0]);
-      CorrectorFunctionType imag_real(macro_imag_component, cell_solutions_[0][0]);
-      corrector_imag = imag_real;
-      if (cell_solutions_[0].size() > 1) {
-        CorrectorFunctionType real_imag(macro_real_component, cell_solutions_[0][1]);
-        CorrectorFunctionType imag_imag(macro_imag_component, cell_solutions_[0][1]);
-        corrector_real = corrector_real - imag_imag;
-        corrector_imag = corrector_imag + real_imag;
-      }
-    }
-    for (size_t ii = 1; ii < cell_solutions_.size(); ++ii) {
-      ConstantFineScalarFunctionType macro_real_component_new(macro_real[ii]);
-      CorrectorFunctionType real_real(macro_real_component_new, cell_solutions_[ii][0]);
-      if (macro_part_.size() > 1) {
-        ConstantFineScalarFunctionType macro_imag_component(macro_imag[ii]);
-        CorrectorFunctionType imag_real(macro_imag_component, cell_solutions_[ii][0]);
-        corrector_imag = corrector_imag + imag_real;
-        corrector_real = corrector_real + real_real;
+    assert(macro_part_.size() > 1);
+    assert(ret.size() > 1);
+    //clear vectors
+    ret[0].vector() *= 0;
+    ret[1].vector() *= 0;
+    if (type_ == "id") {
+      auto macro_real = macro_part_[0].local_function(entity_)->evaluate(xx);
+      auto macro_imag = macro_part_[1].local_function(entity_)->evaluate(xx);
+      assert(macro_real.size() == cell_solutions_.size());
+      for (size_t ii = 0; ii < cell_solutions_.size(); ++ii) {
+        ret[0].vector().axpy(macro_real[ii], cell_solutions_[ii][0].vector());
+        ret[1].vector().axpy(macro_imag[ii], cell_solutions_[ii][0].vector());
         if (cell_solutions_[ii].size() > 1) {
-          CorrectorFunctionType real_imag(macro_real_component_new, cell_solutions_[ii][1]);
-          CorrectorFunctionType imag_imag(macro_imag_component, cell_solutions_[ii][1]);
-          corrector_real = corrector_real - imag_imag;
-          corrector_imag = corrector_imag + real_imag;
+          ret[0].vector().axpy(-1*macro_imag[ii], cell_solutions_[ii][1].vector());
+          ret[1].vector().axpy(macro_real[ii], cell_solutions_[ii][1].vector());
         }
       }
     }
-    return std::vector< CorrectorFunctionType >({corrector_real, corrector_imag});
+    if (type_ == "curl") {
+      auto macro_real = macro_part_[0].local_function(entity_)->jacobian(xx);
+      auto macro_imag = macro_part_[1].local_function(entity_)->jacobian(xx);
+      typename CoarseFunctionImp::RangeType macro_curl_real(0);
+      typename CoarseFunctionImp::RangeType macro_curl_imag(0);
+      macro_curl_real[0] = macro_real[2][1] - macro_real[1][2];
+      macro_curl_real[1] = macro_real[0][2] - macro_real[2][0];
+      macro_curl_real[2] = macro_real[1][0] - macro_real[0][1];
+      macro_curl_imag[0] = macro_imag[2][1] - macro_imag[1][2];
+      macro_curl_imag[1] = macro_imag[0][2] - macro_imag[2][0];
+      macro_curl_imag[2] = macro_imag[1][0] - macro_imag[0][1];
+      assert(macro_curl_real.size() == cell_solutions_.size());
+      for (size_t ii = 0; ii < cell_solutions_.size(); ++ii) {
+        ret[0].vector().axpy(macro_curl_real[ii], cell_solutions_[ii][0].vector());
+        ret[1].vector().axpy(macro_curl_imag[ii], cell_solutions_[ii][0].vector());
+        if (cell_solutions_[ii].size() > 1) {
+          ret[0].vector().axpy(-1*macro_curl_imag[ii], cell_solutions_[ii][1].vector());
+          ret[1].vector().axpy(macro_curl_real[ii], cell_solutions_[ii][1].vector());
+        }
+      }
+    }
   }
 
 private:
-  std::vector< CoarseFunctionImp > macro_part_;
+  std::vector< CoarseFunctionImp >  macro_part_;
   std::vector< std::vector< MicroFunctionImp > > cell_solutions_;
+  const std::string type_;
+  const CoarseEntityType& entity_;
 };
 
 
