@@ -347,7 +347,7 @@ public:
         discrete_correc_macro_local->evaluate(xx, discrete_correc_macro);
         cube_result *= 0;
         //loop over micro entities
-        for (auto& micro_entity : DSC::entityRange(ell_cell_.cell_space().grid_view())) {
+        for (auto& micro_entity : DSC::entityRange(discrete_corrector.cell_space().grid_view())) {
           auto local_discrete_correc_real = discrete_correc_macro[0].local_function(micro_entity);
           auto local_discrete_correc_imag = discrete_correc_macro[1].local_function(micro_entity);
           size_t integrand_order_micro = boost::numeric_cast< size_t >
@@ -686,18 +686,20 @@ public:
                          const std::vector< std::vector< MicroFunctionImp > >& cell_solutions,
                          const std::string& type,
                          const CoarseEntityType& coarse_entity)
-    : macro_part_(macro_part)
+    : local_macro_part_(macro_part.size())
     , cell_solutions_(cell_solutions)
     , type_(type)
-    , entity_(coarse_entity)
-  {}
+  {
+    for (size_t ii = 0; ii < macro_part.size(); ++ii)
+      local_macro_part_[ii] = std::move(macro_part[ii].local_function(coarse_entity));
+  }
 
   size_t order() const
   {
     if (type_ == "id")
-      return macro_part_[0].local_function(entity_)->order();
+      return local_macro_part_[0]->order();
     if (type_ == "curl")
-      return boost::numeric_cast< size_t >(std::max(ssize_t(macro_part_[0].local_function(entity_)->order() -1), ssize_t(0)));
+      return boost::numeric_cast< size_t >(std::max(ssize_t(local_macro_part_[0]->order() -1), ssize_t(0)));
     else
       DUNE_THROW(Dune::NotImplemented, "This type of corrector needs to be implemented");
   }
@@ -705,14 +707,14 @@ public:
 
   void evaluate(const CoarseDomainType& xx, std::vector< MicroFunctionImp >& ret) const
   {
-    assert(macro_part_.size() > 1);
+    assert(local_macro_part_.size() > 1);
     assert(ret.size() > 1);
     //clear vectors
     ret[0].vector() *= 0;
     ret[1].vector() *= 0;
     if (type_ == "id") {
-      auto macro_real = macro_part_[0].local_function(entity_)->evaluate(xx);
-      auto macro_imag = macro_part_[1].local_function(entity_)->evaluate(xx);
+      auto macro_real = local_macro_part_[0]->evaluate(xx);
+      auto macro_imag = local_macro_part_[1]->evaluate(xx);
       assert(macro_real.size() == cell_solutions_.size());
       for (size_t ii = 0; ii < cell_solutions_.size(); ++ii) {
         ret[0].vector().axpy(macro_real[ii], cell_solutions_[ii][0].vector());
@@ -724,8 +726,8 @@ public:
       }
     }
     if (type_ == "curl") {
-      auto macro_real = macro_part_[0].local_function(entity_)->jacobian(xx);
-      auto macro_imag = macro_part_[1].local_function(entity_)->jacobian(xx);
+      auto macro_real = local_macro_part_[0]->jacobian(xx);
+      auto macro_imag = local_macro_part_[1]->jacobian(xx);
       typename CoarseFunctionImp::RangeType macro_curl_real(0);
       typename CoarseFunctionImp::RangeType macro_curl_imag(0);
       macro_curl_real[0] = macro_real[2][1] - macro_real[1][2];
@@ -747,10 +749,9 @@ public:
   }
 
 private:
-  std::vector< CoarseFunctionImp >  macro_part_;
+  std::vector< std::unique_ptr< typename CoarseFunctionImp::LocalfunctionType > > local_macro_part_;
   std::vector< std::vector< MicroFunctionImp > > cell_solutions_;
   const std::string type_;
-  const CoarseEntityType& entity_;
 };
 
 
