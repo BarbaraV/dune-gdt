@@ -405,6 +405,38 @@ public:
       return std::sqrt(result);
   }
 
+  template< class ReferenceFunctionImp, class CoarseFunctionImp, class CurlCellFunctionImp, class IdCellFunctionImp >
+  RangeFieldType reference_error(std::vector< ReferenceFunctionImp >& reference_sol,
+                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, CurlCellFunctionImp >& curl_corrector,
+                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, IdCellFunctionImp >& id_corrector,
+                                 double delta, std::string type)
+  {
+    //build DeltaCorrectorCurl
+    typedef Dune::GDT::DeltaCorrectorCurl< CoarseFunctionImp, CurlCellFunctionImp, IdCellFunctionImp > DeltaCorrectorType;
+    DeltaCorrectorType corrector_real(curl_corrector.macro_function(), curl_corrector.cell_solutions(), id_corrector.cell_solutions(), delta, "real");
+    DeltaCorrectorType corrector_imag(curl_corrector.macro_function(), curl_corrector.cell_solutions(), id_corrector.cell_solutions(), delta, "imag");
+    //build errors
+    typedef Dune::Stuff::Functions::Difference< ReferenceFunctionImp, DeltaCorrectorType > DifferenceFunctionType;
+    DifferenceFunctionType error_real(reference_sol[0], corrector_real);
+    DifferenceFunctionType error_imag(reference_sol[1], corrector_imag);
+    //compute errors depending on type
+    RangeFieldType result = 0;
+    if(type == "l2") {
+      Dune::GDT::Products::L2< typename ReferenceFunctionImp::SpaceType::GridViewType > l2_product(reference_sol[0].space().grid_view());
+      result += l2_product.apply2(error_real, error_real);
+      result += l2_product.apply2(error_imag, error_imag);
+      return std::sqrt(result);
+    }
+    else if(type == "hcurlsemi") {
+      Dune::GDT::Products::HcurlSemi< typename ReferenceFunctionImp::SpaceType::GridViewType > hcurl_product(reference_sol[0].space().grid_view());
+      result += hcurl_product.apply2(error_real, error_real);
+      result += hcurl_product.apply2(error_imag, error_imag);
+      return std::sqrt(result);
+    }
+    else
+      DUNE_THROW(Dune::NotImplemented, "This type of norm is not implemented");
+  }
+
   /**
    * @brief solve_and_correct solves HMM and computes the correctors as well
    * @param macro_solution Vector (real and imaginary part) for the macroscopic solution
