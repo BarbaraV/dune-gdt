@@ -87,10 +87,10 @@ public:
   }
 
 private:
-  const std::vector< CoarseFunctionImp > macro_part_;
+  const std::vector< CoarseFunctionImp >               macro_part_;
   const std::vector< std::vector< MicroFunctionImp > > cell_solutions_;
-  const std::string type_;
-}; //PeriodicCorrector
+  const std::string                                    type_;
+}; //class PeriodicCorrector
 
 
 /** class to represent the corrector in an HMM on a given entity of the macroscopic domain
@@ -135,7 +135,6 @@ public:
     else
       DUNE_THROW(Dune::NotImplemented, "This type of corrector needs to be implemented");
   }
-
 
   /**
    * @brief evaluate evaluates the corrector with respect to the macroscopic variable x
@@ -187,13 +186,13 @@ public:
         }
       }
     }
-  }
+  } //evaluate
 
 private:
   std::vector< std::unique_ptr< typename CoarseFunctionImp::LocalfunctionType > > local_macro_part_;
   std::vector< std::vector< MicroFunctionImp > > cell_solutions_;
   const std::string type_;
-}; //PeriodicCorrectorLocal
+}; //class PeriodicCorrectorLocal
 
 
 /** class to describe the zeroth order approximation to the heterogeneous solution, computed form the macroscopic part and its correctors of the HMM for a curl-curl-problem
@@ -310,7 +309,6 @@ public:
     }
     //now yy is a (global) point in the unit cube
     //do now the same entity search as before, but for the unit cube grid view
-    //tmp storage
     std::vector< std::vector< typename FineFunctionIdImp::JacobianRangeType > >
       id_cell_jacobian(id_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::JacobianRangeType >(id_cell_solutions_[0].size()));
     typedef typename FineFunctionIdImp::SpaceType::GridViewType FineGridViewType;
@@ -395,7 +393,6 @@ public:
     }
     //now yy is a (global) point in the unit cube
     //do now the same entity search as before, but for the unit cube grid view
-    //tmp storage
     std::vector< std::vector< typename FineFunctionCurlImp::JacobianRangeType > >
       curl_cell_jacobian(curl_cell_solutions_.size(), std::vector< typename FineFunctionCurlImp::JacobianRangeType >(curl_cell_solutions_[0].size()));
     typedef typename FineFunctionCurlImp::SpaceType::GridViewType FineGridViewType;
@@ -417,19 +414,11 @@ public:
           ret.axpy(macro_curl[0][ii], curl_cell_jacobian[ii][0]); //real*real
           if (curl_cell_solutions_[ii].size() > 1)
             ret.axpy(-1*macro_curl[1][ii], curl_cell_jacobian[ii][1]); //-imag*imag
-          //curl_cell_jacobian[ii][0] *= macro_curl[0][ii];
-          //curl_cell_jacobian[ii][1] *= -1*macro_curl[1][ii];
-          //ret += curl_cell_jacobian[ii][0];
-          //ret += curl_cell_jacobian[ii][1];
         }
         else if (part_ == "imag") {
           ret.axpy(macro_curl[1][ii], curl_cell_jacobian[ii][0]); //imag*real
           if(curl_cell_solutions_[ii].size() > 1)
             ret.axpy(macro_curl[0][ii], curl_cell_jacobian[ii][1]); //real*imag
-          //curl_cell_jacobian[ii][0] *= macro_curl[1][ii];
-          //curl_cell_jacobian[ii][1] *= macro_curl[0][ii];
-          //ret += curl_cell_jacobian[ii][0];
-          //ret += curl_cell_jacobian[ii][1];
         }
       }
     }
@@ -437,12 +426,12 @@ public:
 
 
 private:
-  const std::vector< CoarseFunctionImp > macro_function_;
+  const std::vector< CoarseFunctionImp >                  macro_function_;
   const std::vector< std::vector< FineFunctionCurlImp > > curl_cell_solutions_;
-  const std::vector< std::vector< FineFunctionIdImp > > id_cell_solutions_;
-  const DomainFieldType delta_;
-  const std::string part_;
-};  //DeltaCorrectorCurl
+  const std::vector< std::vector< FineFunctionIdImp > >   id_cell_solutions_;
+  const DomainFieldType                                   delta_;
+  const std::string                                       part_;
+};  //class DeltaCorrectorCurl
 
 
 } //namespace GDT

@@ -283,7 +283,6 @@ public:
     VectorType solution(coarse_space_.mapper().size());
     Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
     solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
-
     //get real and imaginary part and make discrete functions
     RealVectorType solution_real(coarse_space_.mapper().size());
     RealVectorType solution_imag(coarse_space_.mapper().size());
@@ -292,7 +291,6 @@ public:
     assert(macro_solution.size() > 1);
     macro_solution[0].vector() = solution_real;
     macro_solution[1].vector() = solution_imag;
-
     //compute cell problems
     AllCurlSolutionsStorageType curl_cell_solutions(dimDomain);
     for (auto& it : curl_cell_solutions) {
@@ -316,11 +314,10 @@ public:
       ell_cell_functions[ii][0].vector() = ell_cell_solutions[ii]->operator[](0).vector();
       ell_cell_functions[ii][1].vector() = ell_cell_solutions[ii]->operator[](1).vector();
     }
-
     //build correctors
     return std::make_pair(Dune::GDT::PeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >(macro_solution, curl_cell_functions, "curl"),
                           Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType >(macro_solution, ell_cell_functions, "id"));
-  }
+  } //solve and correct
 
   /** \brief computes the error between an analytical and the discrete corrector
    *
@@ -420,7 +417,7 @@ public:
         } //loop over macro quadrature points
       }//loop over macro entities
       return std::sqrt(result);
-  }
+  } //corrector error
 
   /** \brief computes the error between a reference solution (to the heterogeneous problem, on a fine grid) to the HMM approximation
    *
@@ -460,184 +457,8 @@ public:
     }
     else
       DUNE_THROW(Dune::NotImplemented, "This type of norm is not implemented");
-  }
+  } //reference error
 
-  /**
-   * @brief solve_and_correct solves HMM and computes the correctors as well
-   * @param macro_solution Vector (real and imaginary part) for the macroscopic solution
-   * @param curl_corrector Map with discrete curl correctors for entity and quadrature point
-   * @param id_corrector Map with discrete identity corectors for entity and quadrature point
-   * @todo Other types for the correctors so that they can also be evaluated at other points of the macroscopic grid
-   */
-/*  void solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution,
-                         std::map< std::pair< size_t, size_t >, typename CurlCellReconstruction::CellDiscreteFunctionType >& curl_corrector,
-                         std::map< std::pair< size_t, size_t >, typename EllipticCellReconstruction::CellDiscreteFunctionType >& id_corrector)
-  {
-    if(is_pseudo_)
-      DUNE_THROW(Dune::NotImplemented, "Computation of correctors for Pseudo HMM not implemented yet");
-    if (!is_assembled_)
-      assemble();
-    VectorType solution(coarse_space_.mapper().size());
-    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
-
-    //get real and imaginary part and make discrete functions
-    RealVectorType solution_real(coarse_space_.mapper().size());
-    RealVectorType solution_imag(coarse_space_.mapper().size());
-    solution_real.backend() = solution.backend().real();
-    solution_imag.backend() = solution.backend().imag();
-    assert(macro_solution.size() > 1);
-    macro_solution[0].vector() = solution_real;
-    macro_solution[1].vector() = solution_imag;
-
-    //compute correctors
-    RealVectorType tmp_curl_vec_real(curl_cell_.cell_space().mapper().size());
-    RealVectorType tmp_curl_vec_imag(curl_cell_.cell_space().mapper().size());
-    RealVectorType tmp_id_vec_real(ell_cell_.cell_space().mapper().size());
-    RealVectorType tmp_id_vec_imag(ell_cell_.cell_space().mapper().size());
-    for (auto& entity : DSC::entityRange(coarse_space_.grid_view())) {
-      const auto local_macro_vector_real = macro_solution[0].local_discrete_function(entity)->vector();
-      const auto local_macro_vector_imag = macro_solution[1].local_discrete_function(entity)->vector();
-      size_t entity_index = coarse_space_.grid_view().indexSet().index(entity);
-      //curl correctors
-      typedef Dune::QuadratureRules< MacroDomainFieldType, dimDomain > VolumeQuadratureRules;
-      typedef Dune::QuadratureRule< MacroDomainFieldType, dimDomain > VolumeQuadratureType;
-      const VolumeQuadratureType& volumeQuadrature1 = VolumeQuadratureRules::rule(entity.type(), 0); //automatically get order!
-      //loop over all quadrature points
-      const auto quadPointEndIt1 = volumeQuadrature1.end();
-      size_t ii = 0;
-      for (auto quadPointIt = volumeQuadrature1.begin(); quadPointIt != quadPointEndIt1; ++quadPointIt, ++ii) {
-        const auto local_curl_cell_sol = curl_correctors_.at(std::make_pair(entity_index, ii));
-        tmp_curl_vec_real *= 0;
-        tmp_curl_vec_imag *= 0;
-        for (size_t jj = 0; jj < local_curl_cell_sol.size(); ++jj) {
-          tmp_curl_vec_real += local_macro_vector_real.get(jj) * local_curl_cell_sol[jj]->operator[](0).vector();
-          tmp_curl_vec_imag += local_macro_vector_imag.get(jj) * local_curl_cell_sol[jj]->operator[](0).vector();
-        }
-        Dune::GDT::DiscreteFunction< typename CurlCellReconstruction::CellSpaceType, RealVectorType > tmp_curl_discr_fct_real(curl_cell_.cell_space(), tmp_curl_vec_real);
-        typename CurlCellReconstruction::CellDiscreteFunctionType tmp_curl_discr_fct(2, tmp_curl_discr_fct_real);
-        tmp_curl_discr_fct[1].vector() = tmp_curl_vec_imag;
-        curl_corrector.insert({std::make_pair(entity_index, ii), tmp_curl_discr_fct});
-      } //loop over quadrature points
-      //id correctors
-      const VolumeQuadratureType& volumeQuadrature2 = VolumeQuadratureRules::rule(entity.type(), 2); //automatically get order!
-      //loop over all quadrature points
-      const auto quadPointEndIt2 = volumeQuadrature2.end();
-      size_t kk = 0;
-      for (auto quadPointIt = volumeQuadrature2.begin(); quadPointIt != quadPointEndIt2; ++quadPointIt, ++kk) {
-        const auto local_id_cell_sol = id_correctors_.at(std::make_pair(entity_index, kk));
-        tmp_id_vec_real *= 0;
-        tmp_id_vec_imag *= 0;
-        for (size_t jj = 0; jj < local_id_cell_sol.size(); ++jj) {
-          tmp_id_vec_real += local_macro_vector_real.get(jj) * local_id_cell_sol[jj]->operator[](0).vector()
-                                - local_macro_vector_imag.get(jj) * local_id_cell_sol[jj]->operator[](1).vector();
-          tmp_id_vec_imag += local_macro_vector_imag.get(jj) * local_id_cell_sol[jj]->operator[](0).vector()
-                                + local_macro_vector_real.get(jj) * local_id_cell_sol[jj]->operator[](1).vector();
-        }
-        Dune::GDT::DiscreteFunction< typename EllipticCellReconstruction::CellSpaceType, RealVectorType > tmp_id_discr_fct_real(ell_cell_.cell_space(), tmp_id_vec_real);
-        typename EllipticCellReconstruction::CellDiscreteFunctionType tmp_id_discr_fct(2, tmp_id_discr_fct_real);
-        tmp_id_discr_fct[1].vector() = tmp_id_vec_imag;
-        id_corrector.insert({std::make_pair(entity_index, kk), tmp_id_discr_fct});
-      } //loop over quadrature points
-    } //loop over macro entities
-  } //solve_and_correct
-*/
-  /** \brief Computes the error between analytical correctors and computed (discrete) correctors
-   * \note for the id part expected_macro_part is the macroscopic solution, for the curl part it is the solution's curl
-   */
-  template< class MacroFctType, class MicroFctType, class CellDiscreteFctType >
-  RangeFieldType corrector_error(std::vector< MacroFctType >& expected_macro_part,
-                                 std::vector< std::vector< MicroFctType > >& expected_cell_solutions,
-                                 std::map< std::pair< size_t, size_t >, CellDiscreteFctType >& corrector,
-                                 std::string type)
-  {
-    RangeFieldType result = 0;
-    RangeFieldType cube_result = 0;
-    typename MicroFctType::JacobianRangeType micro_real(0);
-    typename MicroFctType::JacobianRangeType micro_imag(0);
-    assert(expected_macro_part.size() > 1);
-    assert(expected_cell_solutions.size() == dimDomain);
-    for (auto& macro_entity : DSC::entityRange(coarse_space_.grid_view())) {
-      auto expected_macro_local_real = expected_macro_part[0].local_function(macro_entity);
-      auto expected_macro_local_imag = expected_macro_part[1].local_function(macro_entity);
-      auto entity_index = coarse_space_.grid_view().indexSet().index(macro_entity);
-      size_t integrand_order = boost::numeric_cast< size_t >(2* std::max(ssize_t(expected_macro_local_real->order()), ssize_t(expected_macro_local_imag->order())));
-      if(type == "id" || type == "id_real" || type == "id_imag")
-        integrand_order = 2;
-      typedef Dune::QuadratureRules< MacroDomainFieldType, dimDomain > VolumeQuadratureRules;
-      typedef Dune::QuadratureRule< MacroDomainFieldType, dimDomain > VolumeQuadratureType;
-      const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(macro_entity.type(), boost::numeric_cast<int>(integrand_order));
-      //loop over all quadrature points
-      const auto quadPointEndIt = volumeQuadrature.end();
-      size_t ii = 0;
-      for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
-        const Dune::FieldVector< MacroDomainFieldType, dimDomain > xx = quadPointIt->position();
-        //integration factors
-        const double integration_factor = macro_entity.geometry().integrationElement(xx);
-        const double quadrature_weight = quadPointIt->weight();
-        //evaluate macro parts and get correctors
-        auto expected_macro_value_real = expected_macro_local_real->evaluate(xx);
-        auto expected_macro_value_imag = expected_macro_local_imag->evaluate(xx);
-        auto corrector_real = corrector.at(std::make_pair(entity_index, ii))[0];
-        auto corrector_imag = corrector.at(std::make_pair(entity_index, ii))[1];
-        if(type == "id" || type == "id_real" || type == "id_imag")
-          ++ii;
-        cube_result *= 0;
-        //loop over micro entities
-        for (auto& micro_entity : DSC::entityRange(ell_cell_.cell_space().grid_view())) {
-          auto local_correc_real = corrector_real.local_function(micro_entity);
-          auto local_correc_imag = corrector_imag.local_function(micro_entity);
-          typedef Dune::QuadratureRules< CellDomainFieldType, dimDomain > VolumeQuadratureRulesMicro;
-          typedef Dune::QuadratureRule< CellDomainFieldType, dimDomain > VolumeQuadratureTypeMicro;
-          const VolumeQuadratureTypeMicro& volumeQuadrature_micro = VolumeQuadratureRulesMicro::rule(micro_entity.type(), 0);
-          //loop over all microscopic quadrature points
-          const auto quadPointEndIt_micro = volumeQuadrature_micro.end();
-          for (auto quadPointIt_micro = volumeQuadrature_micro.begin(); quadPointIt_micro != quadPointEndIt_micro; ++quadPointIt_micro) {
-            const auto yy = quadPointIt_micro->position();
-            //integration factors
-            const double integration_factor_micro = micro_entity.geometry().integrationElement(yy);
-            const double quadrature_weight_micro = quadPointIt_micro->weight();
-            micro_real *= 0;
-            micro_imag *= 0;
-            //evaluate
-            for (size_t jj = 0; jj < dimDomain; ++jj) {
-              auto jacob_real = expected_cell_solutions[jj][0].local_function(micro_entity)->jacobian(yy);
-              auto jacob_real1 = jacob_real;
-              jacob_real *= expected_macro_value_real[jj];
-              jacob_real1 *= expected_macro_value_imag[jj];
-              auto jacob_imag = expected_cell_solutions[jj][1].local_function(micro_entity)->jacobian(yy);
-              auto jacob_imag1 = jacob_imag;
-              jacob_imag *= expected_macro_value_imag[jj];
-              jacob_imag1 *= expected_macro_value_real[jj];
-              micro_real += jacob_real;
-              micro_real -= jacob_imag;
-              micro_imag += jacob_real1;
-              micro_imag += jacob_imag1;
-            }
-            micro_real -= local_correc_real->jacobian(yy);
-            micro_imag -= local_correc_imag->jacobian(yy);
-            //compute local contribution to the norm
-            if(type == "id")
-              cube_result += quadrature_weight_micro * integration_factor_micro * (micro_real[0].two_norm2() + micro_imag[0].two_norm2());
-            else if(type == "id_real")
-              cube_result += quadrature_weight_micro * integration_factor_micro * micro_real[0].two_norm2();
-            else if(type == "id_imag")
-              cube_result += quadrature_weight_micro * integration_factor_micro * micro_imag[0].two_norm2();
-            else if(type == "curl")
-              cube_result += quadrature_weight_micro * integration_factor_micro * (micro_real.frobenius_norm2() + micro_imag.frobenius_norm2());
-            else if(type == "curl_real")
-              cube_result += quadrature_weight_micro * integration_factor_micro * micro_real.frobenius_norm2();
-            else if(type == "curl_imag")
-              cube_result += quadrature_weight_micro * integration_factor_micro * micro_imag.frobenius_norm2();
-            else
-              DUNE_THROW(Dune::NotImplemented, "This type of norm is not implemented");
-          }//loop over micro quadrature points
-        }//loop over micro entities
-        result += quadrature_weight * integration_factor * cube_result;
-      } //loop over macro quadrature points
-    }//loop over macro entities
-    return std::sqrt(result);
-  }//corrector_error
 
 private:
   const SpaceType                     coarse_space_;
@@ -663,6 +484,7 @@ private:
   mutable RealVectorType              rhs_vector_imag_;
   mutable VectorType                  rhs_vector_;
 };
+
 
 template< class GridViewImp, int polynomialOrder >
 class HelmholtzDecomp {

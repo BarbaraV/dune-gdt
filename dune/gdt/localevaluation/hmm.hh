@@ -268,9 +268,6 @@ public:
             tmp_result += local_divparam->evaluate(x) * (allLocalSolutionEvaluations[jj][kk][0][0] * allLocalSolutionEvaluations[ii][kk][0][0]
                                                          + allLocalSolutionEvaluations[jj][kk][1][1] * allLocalSolutionEvaluations[ii][kk][1][1]
                                                          + allLocalSolutionEvaluations[jj][kk][2][2] * allLocalSolutionEvaluations[ii][kk][2][2]);
-           /* tmp_result *= ((ansatzcurl[jj][0] + allLocalSolutionEvaluations[jj][kk][2][1] - allLocalSolutionEvaluations[jj][kk][1][2]) * testcurl[ii][0]
-                            + (ansatzcurl[jj][1] + allLocalSolutionEvaluations[jj][kk][0][2] - allLocalSolutionEvaluations[jj][kk][2][0]) * testcurl[ii][1]
-                            + (ansatzcurl[jj][2] + allLocalSolutionEvaluations[jj][kk][1][0] - allLocalSolutionEvaluations[jj][kk][0][1]) * testcurl[ii][2]); */
             tmp_result *= (quadrature_weight * integration_factor);
             retRow[jj] += tmp_result;
           } //loop over cols
@@ -418,9 +415,6 @@ public:
             tmp_result += local_divparam->evaluate(x) * (allCellCorrecJacobjj[0][0] * allCellCorrecJacobii[0][0]
                                                          + allCellCorrecJacobjj[1][1] * allCellCorrecJacobii[1][1]
                                                          + allCellCorrecJacobjj[2][2] * allCellCorrecJacobjj[2][2]);
-           /* tmp_result *= ((ansatzcurl[jj][0] + allLocalSolutionEvaluations[jj][kk][2][1] - allLocalSolutionEvaluations[jj][kk][1][2]) * testcurl[ii][0]
-                            + (ansatzcurl[jj][1] + allLocalSolutionEvaluations[jj][kk][0][2] - allLocalSolutionEvaluations[jj][kk][2][0]) * testcurl[ii][1]
-                            + (ansatzcurl[jj][2] + allLocalSolutionEvaluations[jj][kk][1][0] - allLocalSolutionEvaluations[jj][kk][0][1]) * testcurl[ii][2]); */
             tmp_result *= (quadrature_weight * integration_factor);
             retRow[jj] += tmp_result;
           } //loop over cols
@@ -627,8 +621,6 @@ public:
               tmp_result += value_real * (reconjj_imag * reconii_imag);
               tmp_result += value_imag * (reconjj_real * reconii_imag);
               tmp_result -= value_imag * (reconjj_imag * reconii_real);
-              /*auto tmp_result = value_real * (reconjj_real * tValue[ii]);
-              tmp_result -= value_imag*(reconjj_imag * tValue[ii]); */
               tmp_result *= (quadrature_weight * integration_factor);
               retRow[jj] += tmp_result;
             }
@@ -637,8 +629,6 @@ public:
               tmp_result += value_imag * (reconjj_real * reconii_real);
               tmp_result += value_real * (reconjj_imag * reconii_real);
               tmp_result -= value_real * (reconjj_real * reconii_imag);
-              /*auto tmp_result = value_imag * (reconjj_real * tValue[ii]);
-              tmp_result += value_real * (reconjj_imag * tValue[ii]);*/
               tmp_result *= (quadrature_weight * integration_factor);
               retRow[jj] += tmp_result;
             }
@@ -677,7 +667,6 @@ public:
   using typename BaseType::FineFunctionType;
   using typename BaseType::FineGridViewType;
   using typename BaseType::CellSolutionsStorageType;
-
 
   using BaseType::periodic_kappa_real_;
   using BaseType::periodic_kappa_imag_;
@@ -774,7 +763,7 @@ public:
             auto reconjj_imag = reconjj_real;
             reconjj_imag *= 0.;
             for (size_t ll = 0; ll< dimDomain; ++ll){
-              reconii_real.axpy(tValue[ii][ll], allLocalSolutionEvaluations_real[ll][kk][0]); //hopefully does the right thing
+              reconii_real.axpy(tValue[ii][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
               reconii_imag.axpy(tValue[ii][ll], allLocalSolutionEvaluations_imag[ll][kk][0]);
               reconjj_real.axpy(tValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
               reconii_imag.axpy(tValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
@@ -784,8 +773,6 @@ public:
               tmp_result += value_real * (reconjj_imag * reconii_imag);
               tmp_result += value_imag * (reconjj_real * reconii_imag);
               tmp_result -= value_imag * (reconjj_imag * reconii_real);
-              /*auto tmp_result = value_real * (reconjj_real * tValue[ii]);
-              tmp_result -= value_imag*(reconjj_imag * tValue[ii]); */
               tmp_result *= (quadrature_weight * integration_factor);
               retRow[jj] += tmp_result;
             }
@@ -794,8 +781,6 @@ public:
               tmp_result += value_imag * (reconjj_real * reconii_real);
               tmp_result += value_real * (reconjj_imag * reconii_real);
               tmp_result -= value_real * (reconjj_real * reconii_imag);
-              /*auto tmp_result = value_imag * (reconjj_real * tValue[ii]);
-              tmp_result += value_real * (reconjj_imag * tValue[ii]);*/
               tmp_result *= (quadrature_weight * integration_factor);
               retRow[jj] += tmp_result;
             }
