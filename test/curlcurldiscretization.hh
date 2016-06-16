@@ -70,7 +70,7 @@ public:
 
   typedef Dune::GDT::Spaces::Nedelec::PdelabBased< GridViewType, polOrder, double, dimRange > SpaceType;
 
-  //typedef Dune::GDT::DiscreteFunction< SpaceType, VectorType >       DiscreteFunctionType;
+  typedef Dune::GDT::DiscreteFunction< SpaceType, VectorType >       DiscreteFunctionType;
   typedef Dune::GDT::ConstDiscreteFunction < SpaceType, VectorType > ConstDiscreteFunctionType;
 
 
