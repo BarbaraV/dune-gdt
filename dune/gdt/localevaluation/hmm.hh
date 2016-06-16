@@ -75,8 +75,10 @@ public:
 
 /** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the curl-curl part in the HMM
  *
- * \tparan FunctionImp The macroscopic type of paramter functions
+ * \tparan FunctionImp The macroscopic type of parameter functions
  * \tparam CellProblemType The type of cell reconstruction to use for the correctors
+ * \note This class solves the cell problem separately for each quadrature point. If you have a periodic or separable parameter
+ * dependence you shoud use the class \ref HMMCurlcurlPeriodic
  */
 template< class FunctionImp, class CellProblemType >
 class HMMCurlcurl
@@ -287,8 +289,9 @@ protected:
 
 /** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the curl-curl part in the HMM for periodic problems
  *
- * \tparan FunctionImp The macroscopic type of paramter functions
+ * \tparan FunctionImp The macroscopic type of parameter functions
  * \tparam CellProblemType The type of cell reconstruction to use for the correctors
+ * \sa HMMCurlcurl
  */
 template< class FunctionImp, class CellProblemType >
 class HMMCurlcurlPeriodic
@@ -437,6 +440,8 @@ private:
  *
  * \tparam FunctionImp Type of the macroscopic parameter function
  * \tparam CellProblemType Type of cell reconstruction for the correctors
+ * \note This class solves the cell problem separately for each quadrature point. If you have aperiodic or separable parameter
+ * dependence, you should use the class \ref HMMIdentityPeriodic
  */
 template< class FunctionImp, class CellProblemType >
 class HMMIdentity
@@ -657,6 +662,7 @@ protected:
  *
  * \tparam FunctionImp Type of the macroscopic parameter function
  * \tparam CellProblemType Type of cell reconstruction for the correctors
+ * \sa HMMIdentity
  */
 template< class FunctionImp, class CellProblemType >
 class HMMIdentityPeriodic

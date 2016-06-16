@@ -267,6 +267,12 @@ public:
     solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
   }
 
+  /**
+   * @brief solve_and_correct solves the HMM problem and directly computes the (discrete) correctors
+   * @param macro_solution a vector (2 items, first for real, second for imaginary part) of DiscreteFunction (the dspace has to be given),
+   *  where the macro_solution of the HMM will be saved to
+   * @return a pair of PeriodicCorrector objects for the curl and identity corrector function
+   */
   std::pair< Dune::GDT::PeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >, Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType > >
     solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution)
   {
@@ -316,6 +322,17 @@ public:
                           Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType >(macro_solution, ell_cell_functions, "id"));
   }
 
+  /** \brief computes the error between an analytical and the discrete corrector
+   *
+   * the analytical corrector is given as \sum_i expected_macro_part[i] * expected_cell_solutions[i]
+   * supported types are the error for the curl corrector ("curl", "curl_real" or "curl_imag") or the id corrector ("id", "id_real" or "id_imag")
+   * \tparam ExpectedMacroFctType Type for the macroscopic part of the analytical corrector
+   * \tparam ExpectedMicroFctType Type for the cell solutions of the analytical corrector
+   * \tparam DiscreteMacroFctType Type for the macrosocpic part of the discrete (HMM) corrector
+   * \tparam DiscreteMicroFctType Type for the discrete cell solutions of the HMm approximation
+   *
+   * \note If you want to compute the error for the curl corrector, the expected_macro_oart has to be the curl of your expected analytical solution
+   */
   template< class ExpectedMacroFctType, class ExpectedMicroFctType, class DiscreteMacroFctType, class DiscreteMicroFctType >
   RangeFieldType corrector_error(std::vector< ExpectedMacroFctType >& expected_macro_part,
                                  std::vector< std::vector< ExpectedMicroFctType > >& expected_cell_solutions,
@@ -405,6 +422,14 @@ public:
       return std::sqrt(result);
   }
 
+  /** \brief computes the error between a reference solution (to the heterogeneous problem, on a fine grid) to the HMM approximation
+   *
+   * the HMM approximation is turned into a \ref DeltaCorrectorCurl and the L2 or Hcurl seminorms can be requested
+   * \tparam ReferenceFunctionImp Type for the discrete reference solution
+   * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM approximation
+   * \tparam CurlCellFunctionImp Type for the solutions to the cell problem for the curl
+   * \tparam IdCellFunctionImp Type for the solutions to the cell problem for the identity part
+   */
   template< class ReferenceFunctionImp, class CoarseFunctionImp, class CurlCellFunctionImp, class IdCellFunctionImp >
   RangeFieldType reference_error(std::vector< ReferenceFunctionImp >& reference_sol,
                                  Dune::GDT::PeriodicCorrector< CoarseFunctionImp, CurlCellFunctionImp >& curl_corrector,

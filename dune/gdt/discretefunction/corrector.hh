@@ -20,6 +20,11 @@ namespace GDT {
 template< class CoarseFunctionImp, class MicroFunctionImp >
 class PeriodicCorrectorLocal;
 
+/** class to represent the (discrete) corrector in an HMM from given macroscopic and cell problem solutions
+ * \tparam CoarseFunctionImp Type of the macroscopic solution
+ * \tparam MicroFunctionImp Type of the (discrete) solutions to the cell problem
+ * \note this only works for periodic problem
+ */
 template< class CoarseFunctionImp, class MicroFunctionImp >
 class PeriodicCorrector {
 public:
@@ -84,8 +89,13 @@ private:
   const std::vector< CoarseFunctionImp > macro_part_;
   const std::vector< std::vector< MicroFunctionImp > > cell_solutions_;
   const std::string type_;
-}; //PeriodiceCorrector
+}; //PeriodicCorrector
 
+
+/** class to represent the corrector in an HMM on a given entity of the macroscopic domain
+ * \sa PeriodicCorrector
+ * \todo implement this for other types of HMM than curl-curl-problems
+ */
 template< class CoarseFunctionImp, class MicroFunctionImp >
 class PeriodicCorrectorLocal {
 public:
@@ -126,6 +136,15 @@ public:
   }
 
 
+  /**
+   * @brief evaluate evaluates the corrector with respect to the macroscopic variable x
+   * @param xx the (local) point in which the corrector is evaluated
+   * @param ret a vector (2 items, for real and imaginary part) of (discrete) cell functions, into which the actusl corrector is evaluated
+   *
+   * the method takes the macroscopic part and the cell solutions and builds the corrector from those, depeending on the type_:
+   * for "curl", the curl of the macrosocpic part is multiplied (componentwise) with the correcpsonding cell solution and then summed up
+   * for "id", the evaluateion of the macroscopic patrt is nm=multiplied (componentwise) with the correspoding cell solution and then summed up
+   */
   void evaluate(const CoarseDomainType& xx, std::vector< MicroFunctionImp >& ret) const
   {
     assert(local_macro_part_.size() > 1);
@@ -175,6 +194,14 @@ private:
   const std::string type_;
 }; //PeriodicCorrectorLocal
 
+
+/** class to describe the zeroth order approximation to the heterogeneous solution, computed form the macroscopic part and its correctors of the HMM for a curl-curl-problem
+ *
+ * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM solution
+ * \tparam FineFunctionCurlImp Type for corrector to the curl of the HMM solution
+ * \tparam FineFunctionIdImp Type for the corrector to the HMM solution itself (identity part)
+ * \note this class describes a GloablFunction and its evaluation and jacobian use the EntityInlevelSearch, which may not be optimal
+ */
 template< class CoarseFunctionImp, class FineFunctionCurlImp, class FineFunctionIdImp >
 class DeltaCorrectorCurl
   : public Dune::Stuff::GlobalFunctionInterface< typename CoarseFunctionImp::EntityType,
@@ -235,7 +262,12 @@ public:
     return macro_function_[0].local_function(*macro_function_[0].space().grid_view().template begin<0>())->order();
   }
 
-  //only zero order terms, i.e. no delta K_1 is evaluated
+  /** @brief evaluate evaluates the zeroth order HMM approximation to a heterogeneous curl-curl-problem
+   *
+   * @param xx global point of the macroscopic computational domain
+   * @param ret vector the evaluation is stored in
+   * @note only the zero'th order terms are considered, i.e. no delta * K_1 is evaluated
+   */
   virtual void evaluate(const DomainType& xx, RangeType& ret) const override final
   {
     //clear ret
@@ -309,7 +341,13 @@ public:
     }
   } //evaluate
 
-  //jacobian of K_2 is neglected, which is only correct if you use this for curl compuatations!
+
+  /** @brief jacobian evaluates the zeroth order HMM approximation to the jacobian of the solution of a heterogeneous curl-curl-problem
+   *
+   * @param xx global point of the macroscopic computational domain
+   * @param matrix vector the evaluation is stored in
+   * @note only the zero'th order terms are considered, i.e. the jacobian of K_2 is neglected, which is only correct if this is used for curl computations
+   */
   virtual void jacobian(const DomainType& xx, JacobianRangeType& ret) const override final
   {
     //clear ret
