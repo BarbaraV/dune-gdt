@@ -765,8 +765,8 @@ public:
             for (size_t ll = 0; ll< dimDomain; ++ll){
               reconii_real.axpy(tValue[ii][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
               reconii_imag.axpy(tValue[ii][ll], allLocalSolutionEvaluations_imag[ll][kk][0]);
-              reconjj_real.axpy(tValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
-              reconii_imag.axpy(tValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
+              reconjj_real.axpy(aValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
+              reconjj_imag.axpy(aValue[jj][ll], allLocalSolutionEvaluations_imag[ll][kk][0]);
             }
             if (real_part_) {
               auto tmp_result = value_real * (reconjj_real * reconii_real);
