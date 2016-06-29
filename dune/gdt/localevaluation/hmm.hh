@@ -31,6 +31,9 @@ class HMMCurlcurl;
 template< class FunctionImp, class CellProblemType >
 class HMMIdentity;
 
+template< class FunctionImp, class CellProblemType >
+class HMMEllipticPeriodic;
+
 namespace internal {
 
 
@@ -68,6 +71,25 @@ public:
   typedef typename CellProblemType::PeriodicViewType        FineGridViewType;
   typedef typename CellProblemType::CellSolutionStorageType CellSolutionsStorageType;
 }; //class HMMIdentityTraits
+
+template< class FunctionType, class CellProblemType >
+class HMMEllipticTraits
+{
+  static_assert(Stuff::is_localizable_function< FunctionType >::value,
+                "FunctionType has to be a localizable function!");
+public:
+  typedef HMMEllipticPeriodic< FunctionType, CellProblemType >                      derived_type;
+  typedef typename FunctionType::EntityType                                         EntityType;
+  typedef typename FunctionType::DomainFieldType                                    DomainFieldType;
+  typedef std::tuple< std::shared_ptr< typename FunctionType::LocalfunctionType > > LocalfunctionTupleType;
+  static const size_t                                                               dimDomain = FunctionType::dimDomain;
+
+  typedef typename CellProblemType::ScalarFct               FineFunctionType;
+  typedef typename CellProblemType::PeriodicViewType        FineGridViewType;
+  typedef typename CellProblemType::CellSolutionStorageType CellSolutionsStorageType;
+
+  typedef std::function< bool(const FineGridViewType&, const typename CellProblemType::PeriodicEntityType&) > FilterType;
+}; //class HMMEllipticTraits
 
 
 }//namespace internal
@@ -795,6 +817,202 @@ public:
 private:
   const CellSolutionsStorageType& cell_solutions_;
 }; //class HMMIdentityPeriodic
+
+
+/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the elliptic part in the HMM
+ *
+ * \tparan FunctionImp The macroscopic type of parameter functions
+ * \tparam CellProblemType The type of cell reconstruction to use for the correctors
+ * \note This class can be used for periodic problems only
+ * \todo implement a general class HMMElliptic
+ */
+template< class FunctionImp, class CellProblemType >
+class HMMEllipticPeriodic
+  : public LocalEvaluation::Codim0Interface< internal::HMMEllipticTraits< FunctionImp, CellProblemType >, 2 >
+{
+public:
+  typedef internal::HMMEllipticTraits< FunctionImp, CellProblemType > Traits;
+  typedef FunctionImp                             FunctionType;
+  typedef typename Traits::LocalfunctionTupleType LocalfunctionTupleType;
+  typedef typename Traits::EntityType             EntityType;
+  typedef typename Traits::DomainFieldType        DomainFieldType;
+  static const size_t                             dimDomain = Traits::dimDomain;
+
+  typedef typename Traits::FineFunctionType         FineFunctionType;
+  typedef typename Traits::FineGridViewType         FineGridViewType;
+  typedef typename Traits::CellSolutionsStorageType CellSolutionsStorageType;
+
+  typedef typename Traits::FilterType FilterType;
+
+  explicit HMMEllipticPeriodic(const CellProblemType& cell_problem,
+                               const FineFunctionType& periodic_a,
+                               const FunctionType& macro_a,
+                               const CellSolutionsStorageType& cell_solutions,
+                               FilterType filter)
+    : cell_problem_(cell_problem)
+    , periodic_a_(periodic_a)
+    , macro_a_(macro_a)
+    , cell_solutions_(cell_solutions)
+    , filter_(filter)
+  {}
+
+  explicit HMMEllipticPeriodic(const CellProblemType& cell_problem,
+                               const FineFunctionType& periodic_a,
+                               const FunctionType& macro_a,
+                               const CellSolutionsStorageType& cell_solutions)
+    : cell_problem_(cell_problem)
+    , periodic_a_(periodic_a)
+    , macro_a_(macro_a)
+    , cell_solutions_(cell_solutions)
+  {}
+
+  /// \name Required by LocalEvaluation::Codim0Interface< ..., 2 >
+  /// \{
+
+  LocalfunctionTupleType localFunctions(const EntityType& entity) const
+  {
+    return std::make_tuple(macro_a_.local_function(entity));
+  }
+
+  /**
+   * \brief extracts the local functions and calls the correct order() method
+   */
+  template< class R, size_t rT, size_t rCT, size_t rA, size_t rCA >
+  size_t order(const LocalfunctionTupleType& localFuncs,
+               const Stuff::LocalfunctionSetInterface
+                   < EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+               const Stuff::LocalfunctionSetInterface
+                   < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase) const
+  {
+    return order(*std::get< 0 >(localFuncs), testBase, ansatzBase);
+  }
+
+  /**
+   * \brief extracts the local functions and calls the correct evaluate() method
+   */
+  template< class R, size_t rT, size_t rCT, size_t rA, size_t rCA >
+  void evaluate(const LocalfunctionTupleType& localFuncs,
+                const Stuff::LocalfunctionSetInterface
+                    < EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+                const Stuff::LocalfunctionSetInterface
+                    < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    evaluate(*std::get< 0 >(localFuncs), testBase, ansatzBase, localPoint, ret);
+  }
+
+  /// \}
+  /// \name Actual implmentation of order
+  /// \{
+
+  /**
+    * \return localFunction.order()+(testBase.order()-1)+(ansatzBase.order()-1)
+    */
+  template< class R, size_t rL, size_t rCl, size_t rT, size_t rCT, size_t rA, size_t rCA >
+  size_t order(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, rL, rCl >& localFunction,
+               const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+               const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase)
+  const
+  {
+    return localFunction.order()
+     + boost::numeric_cast< size_t >(std::max(ssize_t(testBase.order()) -1, ssize_t(0)))
+     + boost::numeric_cast< size_t >(std::max(ssize_t(ansatzBase.order()) - 1, ssize_t(0)));
+  } // ...order(....)
+
+
+  /// \}
+  /// \name Actual implementation of evaluate
+  /// \{
+
+  /**
+    * \brief Computes the HMM elliptic evaluation
+    * \note Contra-intuitively, we first iterate over the microscopic enities and then over the rows and columns (base size of the macroscopic space),
+    * but in most applications the number of entities is large in comparison to the size of the macroscopic space, so this is much faster
+    * \tparam R RangeFieldType
+    */
+
+  template< class R >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, 1, 1 >::JacobianRangeType JacobianRangeType;
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, 1, 1 >::RangeType         RangeType;
+    typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, 1, 1 >::RangeFieldType    RangeFieldType;
+    //clear return matrix
+    ret *= 0.;
+    //evaluate testGradient
+    const size_t rows = testBase.size();
+    std::vector< JacobianRangeType > tGrad(rows, JacobianRangeType(0));
+    testBase.jacobian(localPoint, tGrad);
+    //evaluate ansatz gradient
+    const size_t cols = ansatzBase.size();
+    std::vector< JacobianRangeType > aGrad(cols, JacobianRangeType(0));
+    ansatzBase.jacobian(localPoint, aGrad);
+    assert(ret.rows()>= rows);
+    assert(ret.cols()>= cols);
+    assert(cell_solutions_.size()==dimDomain);
+    auto cube_grid_view = cell_solutions_[0]->operator[](0).space().grid_view();
+    auto macro_function_value = localFunction.evaluate(localPoint);
+    //integrate over unit cube, but only where filter_(entity)=true
+    for (const auto& entity : DSC::entityRange(cube_grid_view) ) {
+      if (!filter_ || filter_(cube_grid_view, entity) == true) {
+        const auto local_a = periodic_a_.local_function(entity);
+        //get quadrature rule
+        typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+        typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+        const size_t integrand_order = local_a->order() + 2 * (cell_solutions_[0]->operator[](0).local_function(entity)->order() - 1);
+        const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(integrand_order));
+        // evaluate the jacobians of all local solutions in all quadrature points
+        std::vector<std::vector<JacobianRangeType>> allLocalSolutionEvaluations(
+           cell_solutions_.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
+        for (auto lsNum : DSC::valueRange(cell_solutions_.size())) {
+          const auto local_cell_function = cell_solutions_[lsNum]->operator[](0).local_function(entity);
+          local_cell_function->jacobian(volumeQuadrature, allLocalSolutionEvaluations[lsNum]);
+        }
+        //loop over all quadrature points
+        const auto quadPointEndIt = volumeQuadrature.end();
+        size_t kk = 0;
+        for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
+          const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+          //intergation factors
+          const double integration_factor = entity.geometry().integrationElement(x);
+          const double quadrature_weight = quadPointIt->weight();
+          //evaluate
+          for (size_t ii = 0; ii < rows; ++ii) {
+            auto& retRow = ret[ii];
+            for (size_t jj = 0; jj < cols; ++jj) {
+              auto value = (macro_function_value * local_a->evaluate(x));
+              auto reconii = tGrad[ii][0];
+              auto reconjj = aGrad[jj][0];
+              for (size_t ll = 0; ll < dimDomain; ++ll) {
+                reconii.axpy(tGrad[ii][0][ll], allLocalSolutionEvaluations[ll][kk]);
+                reconjj.axpy(aGrad[jj][0][ll], allLocalSolutionEvaluations[ll][kk]);
+              }
+              auto tmp_result = value * (reconjj * reconii);
+              tmp_result *= (quadrature_weight * integration_factor);
+              retRow[jj] = tmp_result;
+            } //loop over cols
+          } //loop over rows
+        } //loop over quadrature points
+      }//only apply where filter_(entity)=true
+    } //loop over cube entities
+  } // ... evaluate (...)
+
+protected:
+  const CellProblemType&          cell_problem_;
+  const FineFunctionType&         periodic_a_;
+  const FunctionType&             macro_a_;
+  const CellSolutionsStorageType& cell_solutions_;
+  const FilterType                filter_;
+}; //class HMMEllipticPeriodic
+
 
 }//namespace LocalEvaluation
 }//namespace GDT
