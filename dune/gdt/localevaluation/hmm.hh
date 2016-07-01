@@ -1005,20 +1005,20 @@ public:
           //intergation factors
           const double integration_factor = entity.geometry().integrationElement(x);
           const double quadrature_weight = quadPointIt->weight();
+          auto value = (macro_function_value * local_a->evaluate(x));
           //evaluate
           for (size_t ii = 0; ii < rows; ++ii) {
             auto& retRow = ret[ii];
             for (size_t jj = 0; jj < cols; ++jj) {
-              auto value = (macro_function_value * local_a->evaluate(x));
               auto reconii = tGrad[ii][0];
               auto reconjj = aGrad[jj][0];
               for (size_t ll = 0; ll < dimDomain; ++ll) {
-                reconii.axpy(tGrad[ii][0][ll], allLocalSolutionEvaluations[ll][kk]);
-                reconjj.axpy(aGrad[jj][0][ll], allLocalSolutionEvaluations[ll][kk]);
+                reconii.axpy(tGrad[ii][0][ll], allLocalSolutionEvaluations[ll][kk][0]);
+                reconjj.axpy(aGrad[jj][0][ll], allLocalSolutionEvaluations[ll][kk][0]);
               }
               auto tmp_result = value * (reconjj * reconii);
               tmp_result *= (quadrature_weight * integration_factor);
-              retRow[jj] = tmp_result;
+              retRow[jj] += tmp_result;
             } //loop over cols
           } //loop over rows
         } //loop over quadrature points
