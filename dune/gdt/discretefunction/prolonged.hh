@@ -11,6 +11,7 @@
 
 #include <dune/stuff/functions/interfaces.hh>
 #include <dune/stuff/common/memory.hh>
+#include <dune/stuff/grid/search.hh>
 
 #include <dune/gdt/discretefunction/default.hh>
 
