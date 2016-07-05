@@ -434,6 +434,268 @@ private:
 };  //class DeltaCorrectorCurl
 
 
+/** class to describe the zeroth order approximation to the heterogeneous solutionfor a highly heterogeneous Helmholtz problem
+ *
+ * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM solution
+ * \tparam FineFunctionGradImp Type for corrector to the gradient of the HMM solution
+ * \tparam FineFunctionIdImp Type for the corrector to the HMM solution itself (identity part, in the inclusions)
+ * \note this class describes a GlobalFunction and its evaluation and jacobian use the EntityInlevelSearch, which may not be optimal
+ */
+template< class CoarseFunctionImp, class FineFunctionGradImp, class FineFunctionIdImp >
+class DeltaCorrectorHelmholtz
+  : public Dune::Stuff::GlobalFunctionInterface< typename CoarseFunctionImp::EntityType,
+                                                 typename CoarseFunctionImp::DomainFieldType,
+                                                 CoarseFunctionImp::dimDomain,
+                                                 typename CoarseFunctionImp::RangeFieldType,
+                                                 CoarseFunctionImp::dimRange >
+{
+  typedef Dune::Stuff::GlobalFunctionInterface< typename CoarseFunctionImp::EntityType,
+                                                typename CoarseFunctionImp::DomainFieldType, CoarseFunctionImp::dimDomain,
+                                                typename CoarseFunctionImp::RangeFieldType, CoarseFunctionImp::dimRange > BaseType;
+  typedef DeltaCorrectorHelmholtz< CoarseFunctionImp, FineFunctionGradImp, FineFunctionIdImp >                            ThisType;
+
+public:
+  using typename BaseType::LocalfunctionType;
+  using typename BaseType::DomainType;
+  using typename BaseType::DomainFieldType;
+  using typename BaseType::RangeType;
+  using typename BaseType::JacobianRangeType;
+
+  static_assert(Dune::GDT::is_discrete_function< CoarseFunctionImp >::value, "macroscopic function has to be a discrete function");
+  static_assert(Dune::GDT::is_discrete_function< FineFunctionGradImp >::value, "elliptic cell solution has to be a discrete function");
+  static_assert(Dune::GDT::is_discrete_function< FineFunctionIdImp >::value, "helmholtz cell solution has to be a discrete function");
+
+  typedef std::function< bool(const typename CoarseFunctionImp::SpaceType::GridViewType&, const typename CoarseFunctionImp::EntityType&) > MacroFilterType;
+  typedef std::function< bool(const typename FineFunctionGradImp::SpaceType::GridViewType&, const typename FineFunctionGradImp::EntityType&) > FineFilterType;
+
+  static const bool available = false;
+
+  static std::string static_id()
+  {
+    return CoarseFunctionImp::static_id() + ".corrector";
+  }
+
+  DeltaCorrectorHelmholtz(const std::vector< CoarseFunctionImp >& macro_fct,
+                          const std::vector< std::vector< FineFunctionGradImp > >& elliptic_cell_solutions,
+                          const std::vector< std::vector< FineFunctionIdImp > >& incl_cell_solutions,
+                          MacroFilterType filter_scatterer,
+                          FineFilterType filter_inclusion,
+                          const double& wavenumber,
+                          const DomainFieldType delta,
+                          const std::string which_part)
+    : macro_function_(macro_fct)
+    , elliptic_cell_solutions_(elliptic_cell_solutions)
+    , inclusion_cell_solutions_(incl_cell_solutions)
+    , filter_scatterer_(filter_scatterer)
+    , filter_inclusion_(filter_inclusion)
+    , wavenumber_(wavenumber)
+    , delta_(delta)
+    , part_(which_part)
+  {
+    assert(macro_fct.size() > 1);
+  }
+
+  DeltaCorrectorHelmholtz(const ThisType& /*other*/) = default;
+
+  ThisType& operator=(const ThisType& /*other*/) = delete;
+
+  virtual std::string type() const override final
+  {
+    return CoarseFunctionImp::static_id() + ".corrector." + part_;
+  }
+
+  virtual std::string name() const override final
+  {
+    return CoarseFunctionImp::static_id() + ".corrector." + part_;
+  }
+
+  virtual size_t order() const override final
+  {
+    return macro_function_[0].local_function(*macro_function_[0].space().grid_view().template begin<0>())->order();
+  }
+
+  /** @brief evaluate evaluates the zeroth order HMM approximation to a highly heterogeneous Helmholtz problem
+   *
+   * @param xx global point of the macroscopic computational domain
+   * @param ret vector the evaluation is stored in
+   * @note only the zero'th order terms are considered
+   */
+  virtual void evaluate(const DomainType& xx, RangeType& ret) const override final
+  {
+    //clear ret
+    ret *= 0;
+    //tmp storage
+    std::vector< RangeType > macro_total(macro_function_.size(), RangeType(0));
+    bool inside_scatterer;
+    //bool outside_inclusion;
+    //entity search in the macro grid view
+    typedef typename CoarseFunctionImp::SpaceType::GridViewType MacroGridViewType;
+    Dune::Stuff::Grid::EntityInlevelSearch< MacroGridViewType > entity_search(macro_function_[0].space().grid_view());
+    std::vector< Dune::FieldVector< typename MacroGridViewType::ctype, MacroGridViewType::dimension > > global_point(1);
+    global_point[0] = xx;
+    const auto source_entity_ptr = entity_search(global_point);
+    assert(source_entity_ptr.size() == 1);
+    const auto& source_entity_unique_ptr = source_entity_ptr[0];
+    if(source_entity_unique_ptr) {
+      const auto source_entity_ptr1 = *source_entity_unique_ptr;
+      const auto& source_entity = *source_entity_ptr1;
+      inside_scatterer = filter_scatterer_(macro_function_[0].space().grid_view(), source_entity);
+      const auto local_source_point = source_entity.geometry().local(xx);
+      //evaluate macro function and its jacobian
+      for (size_t ii = 0; ii < macro_function_.size(); ++ii)
+        macro_function_[ii].local_function(source_entity)->evaluate(local_source_point, macro_total[ii]);
+    }
+    if (part_ == "real")
+      ret += macro_total[0];
+    else if (part_ == "imag")
+      ret += macro_total[1];
+    else
+      DUNE_THROW(Dune::NotImplemented, "You can only compute real or imag part");
+    if (inside_scatterer) {
+      //preparation for fine part
+      DomainType yy(xx);
+      yy /= delta_;
+      DomainFieldType intpart;
+      for (size_t ii = 0; ii < CoarseFunctionImp::dimDomain; ++ii) {
+        auto fracpart = std::modf(yy[ii], &intpart);
+        if (fracpart < 0)
+          yy[ii] = 1 + fracpart;
+        else
+          yy[ii] = fracpart;
+      }
+      //now yy is a (global) point in the unit cube
+      //do now the same entity search as before, but for the grid view of the inclusions
+      std::vector< std::vector< typename FineFunctionIdImp::RangeType > >
+        incl_cell_evaluation(inclusion_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::RangeType >(inclusion_cell_solutions_[0].size()));
+      typedef typename FineFunctionIdImp::SpaceType::GridViewType FineGridViewType;
+      Dune::Stuff::Grid::EntityInlevelSearch< FineGridViewType > entity_search_fine(inclusion_cell_solutions_[0][0].space().grid_view());
+      std::vector< Dune::FieldVector< typename FineGridViewType::ctype, FineGridViewType::dimension > > fine_point(1);
+      fine_point[0] = yy;
+      const auto source_entity_ptr_fine = entity_search_fine(fine_point);
+      assert(source_entity_ptr_fine.size() == 1);
+      const auto& source_entity_unique_ptr_fine = source_entity_ptr_fine[0];
+      if(source_entity_unique_ptr_fine) {
+        const auto source_entity_ptr1 = *source_entity_unique_ptr_fine;
+        const auto& source_entity = *source_entity_ptr1;
+        const auto local_source_point = source_entity.geometry().local(yy);
+        //evaluate id cell solutions
+        assert(inclusion_cell_solutions_.size() == 1);
+        for (size_t jj = 0; jj < inclusion_cell_solutions_[0].size(); ++jj)
+          inclusion_cell_solutions_[0][jj].local_function(source_entity)->evaluate(local_source_point, incl_cell_evaluation[0][jj]);
+        if (part_ == "real") {
+          ret += wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][0]; //real*real
+          if (inclusion_cell_solutions_[0].size() > 1)
+            ret -= wavenumber_ * wavenumber_ *macro_total[1] * incl_cell_evaluation[0][1]; //-imag*imag
+        }
+        else if (part_ == "imag") {
+          ret += wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0]; //imag*real
+          if (inclusion_cell_solutions_[0].size() > 1)
+            ret += wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][1]; //real*imag
+        }
+      }
+    } //inside scatterer
+  } //evaluate
+
+
+  /** @brief jacobian evaluates the zeroth order HMM approximation to the jacobian of the solution of a highly heterogeneous helmholtz problem
+   *
+   * @param xx global point of the macroscopic computational domain
+   * @param ret matrix vector the evaluation is stored in
+   * @note only the zero'th order terms are considered
+   */
+  virtual void jacobian(const DomainType& /*xx*/, JacobianRangeType& /*ret*/) const override final
+  {
+     DUNE_THROW(Dune::NotImplemented, "Not yet implemented");
+    /* //clear ret
+    ret *= 0;
+    //tmp storage
+    std::vector< JacobianRangeType > macro_jacobian(macro_function_.size(), JacobianRangeType(0));
+    std::vector< RangeType > macro_curl(macro_function_.size(), RangeType(0));
+    //entity search in the macro grid view
+    typedef typename CoarseFunctionImp::SpaceType::GridViewType MacroGridViewType;
+    Dune::Stuff::Grid::EntityInlevelSearch< MacroGridViewType > entity_search(macro_function_[0].space().grid_view());
+    std::vector< Dune::FieldVector< typename MacroGridViewType::ctype, MacroGridViewType::dimension > > global_point(1);
+    global_point[0] = xx;
+    const auto source_entity_ptr = entity_search(global_point);
+    assert(source_entity_ptr.size() == 1);
+    const auto& source_entity_unique_ptr = source_entity_ptr[0];
+    if(source_entity_unique_ptr) {
+      const auto source_entity_ptr1 = *source_entity_unique_ptr;
+      const auto& source_entity = *source_entity_ptr1;
+      const auto local_source_point = source_entity.geometry().local(xx);
+      //evaluate macro function and its jacobian
+      for (size_t ii = 0; ii < macro_function_.size(); ++ii) {
+        macro_function_[ii].local_function(source_entity)->jacobian(local_source_point, macro_jacobian[ii]);
+        macro_curl[ii][0] = macro_jacobian[ii][2][1] - macro_jacobian[ii][1][2];
+        macro_curl[ii][1] = macro_jacobian[ii][0][2] - macro_jacobian[ii][2][0];
+        macro_curl[ii][2] = macro_jacobian[ii][1][0] - macro_jacobian[ii][0][1];
+      }
+    }
+    if (part_ == "real")
+      ret += macro_jacobian[0];
+    else if (part_ == "imag")
+      ret += macro_jacobian[1];
+    else
+      DUNE_THROW(Dune::NotImplemented, "You can only compute real or imag part");
+    //preparation for fine part
+    DomainType yy(xx);
+    yy /= delta_;
+    DomainFieldType intpart;
+    for (size_t ii = 0; ii < CoarseFunctionImp::dimDomain; ++ii) {
+      auto fracpart = std::modf(yy[ii], &intpart);
+      if (fracpart < 0)
+        yy[ii] = 1 + fracpart;
+      else
+        yy[ii] = fracpart;
+    }
+    //now yy is a (global) point in the unit cube
+    //do now the same entity search as before, but for the unit cube grid view
+    std::vector< std::vector< typename FineFunctionCurlImp::JacobianRangeType > >
+      curl_cell_jacobian(curl_cell_solutions_.size(), std::vector< typename FineFunctionCurlImp::JacobianRangeType >(curl_cell_solutions_[0].size()));
+    typedef typename FineFunctionCurlImp::SpaceType::GridViewType FineGridViewType;
+    Dune::Stuff::Grid::EntityInlevelSearch< FineGridViewType > entity_search_fine(curl_cell_solutions_[0][0].space().grid_view());
+    std::vector< Dune::FieldVector< typename FineGridViewType::ctype, FineGridViewType::dimension > > fine_point(1);
+    fine_point[0] = yy;
+    const auto source_entity_ptr_fine = entity_search_fine(fine_point);
+    assert(source_entity_ptr_fine.size() == 1);
+    const auto& source_entity_unique_ptr_fine = source_entity_ptr_fine[0];
+    if(source_entity_unique_ptr_fine) {
+      const auto source_entity_ptr1 = *source_entity_unique_ptr_fine;
+      const auto& source_entity = *source_entity_ptr1;
+      const auto local_source_point = source_entity.geometry().local(yy);
+      //evaluate curl cell solutions' jacobian
+      for (size_t ii = 0; ii < curl_cell_solutions_.size(); ++ii) {
+        for (size_t jj = 0; jj < curl_cell_solutions_[ii].size(); ++jj)
+          curl_cell_solutions_[ii][jj].local_function(source_entity)->jacobian(local_source_point, curl_cell_jacobian[ii][jj]);
+        if (part_ == "real") {
+          ret.axpy(macro_curl[0][ii], curl_cell_jacobian[ii][0]); //real*real
+          if (curl_cell_solutions_[ii].size() > 1)
+            ret.axpy(-1*macro_curl[1][ii], curl_cell_jacobian[ii][1]); //-imag*imag
+        }
+        else if (part_ == "imag") {
+          ret.axpy(macro_curl[1][ii], curl_cell_jacobian[ii][0]); //imag*real
+          if(curl_cell_solutions_[ii].size() > 1)
+            ret.axpy(macro_curl[0][ii], curl_cell_jacobian[ii][1]); //real*imag
+        }
+      }
+    }
+    */
+  } //jacobian
+
+
+private:
+  const std::vector< CoarseFunctionImp >                  macro_function_;
+  const std::vector< std::vector< FineFunctionGradImp > > elliptic_cell_solutions_;
+  const std::vector< std::vector< FineFunctionIdImp > >   inclusion_cell_solutions_;
+  MacroFilterType                                         filter_scatterer_;
+  FineFilterType                                          filter_inclusion_;
+  const DomainFieldType                                   wavenumber_;
+  const DomainFieldType                                   delta_;
+  const std::string                                       part_;
+};  //class DeltaCorrectorHelmholtz
+
+
+
 } //namespace GDT
 } //namespace Dune
 
