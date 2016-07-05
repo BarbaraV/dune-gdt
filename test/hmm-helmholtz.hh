@@ -441,6 +441,100 @@ public:
     solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
   }
 
+  /**
+   * @brief solve_and_correct solves the HMM problem and directly computes the (discrete) correctors
+   * @param macro_solution a vector (2 items, first for real, second for imaginary part) of DiscreteFunction (the space has to be given),
+   *  where the macro_solution of the HMM will be saved to
+   * @return a pair of PeriodicCorrector objects for the curl and identity corrector function
+   */
+  std::pair< Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllipticCellDiscreteFctType >, Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType > >
+    solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution)
+  {
+    if (!is_assembled_)
+      assemble();
+    VectorType solution(coarse_space_.mapper().size());
+    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
+    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+    //get real and imaginary part and make discrete functions
+    RealVectorType solution_real(coarse_space_.mapper().size());
+    RealVectorType solution_imag(coarse_space_.mapper().size());
+    solution_real.backend() = solution.backend().real();
+    solution_imag.backend() = solution.backend().imag();
+    assert(macro_solution.size() > 1);
+    macro_solution[0].vector() = solution_real;
+    macro_solution[1].vector() = solution_imag;
+    //compute cell problems
+    AllEllipticSolutionsStorageType elliptic_cell_solutions(dimDomain);
+    for (auto& it : elliptic_cell_solutions) {
+      std::vector< EllipticCellDiscreteFctType >it1(1, EllipticCellDiscreteFctType(elliptic_cell_.cell_space()));
+      it = DSC::make_unique< typename EllipticCellProblem::CellDiscreteFunctionType >(it1);
+    }
+    std::cout<< "computing elliptic cell problems"<< std::endl;
+    elliptic_cell_.compute_cell_solutions(elliptic_cell_solutions);
+    AllInclusionSolutionsStorageType inclusion_cell_solutions(1);
+    for (auto& it : inclusion_cell_solutions) {
+      std::vector< InclusionCellDiscreteFctType>it1(2, InclusionCellDiscreteFctType(inclusion_cell_.cell_space()));
+      it = DSC::make_unique< typename InclusionCellProblem::CellDiscreteFunctionType >(it1);
+    }
+    std::cout<< "computing inclusion cell problems"<< std::endl;
+    inclusion_cell_.compute_cell_solutions(inclusion_cell_solutions);
+
+    std::vector< std::vector< EllipticCellDiscreteFctType > > elliptic_cell_functions(dimDomain,
+                                                                                      std::vector< EllipticCellDiscreteFctType >(1, EllipticCellDiscreteFctType(elliptic_cell_.cell_space())));
+    std::vector< std::vector< InclusionCellDiscreteFctType > > incl_cell_functions(1,
+                                                                                   std::vector< InclusionCellDiscreteFctType >(2, InclusionCellDiscreteFctType(inclusion_cell_.cell_space())));
+    for (size_t ii = 0; ii < dimDomain; ++ii){
+      elliptic_cell_functions[ii][0].vector() = elliptic_cell_solutions[ii]->operator[](0).vector();
+    }
+    incl_cell_functions[0][0].vector() = inclusion_cell_solutions[0]->operator[](0).vector();
+    incl_cell_functions[0][1].vector() = inclusion_cell_solutions[0]->operator[](1).vector();
+    //build correctors
+    return std::make_pair(Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllipticCellDiscreteFctType >(macro_solution, elliptic_cell_functions, "elliptic"),
+                          Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType >(macro_solution, incl_cell_functions, "id_incl"));
+  } //solve and correct
+
+  /** \brief computes the error between a reference solution (to the heterogeneous problem, on a fine grid) to the HMM approximation
+   *
+   * the HMM approximation is turned into a \ref DeltaCorrectorHelmholtz and the L2 or H1 seminorms can be requested
+   * \tparam ReferenceFunctionImp Type for the discrete reference solution
+   * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM approximation
+   * \tparam EllipticCellFunctionImp Type for the solutions to the cell problem for the gradient
+   * \tparam InclusionCellFunctionImp Type for the solutions to the cell problem for the identity part in the inclusions
+   */
+  template< class ReferenceFunctionImp, class CoarseFunctionImp, class EllipticCellFunctionImp, class InclusionCellFunctionImp >
+  RangeFieldType reference_error(std::vector< ReferenceFunctionImp >& reference_sol,
+                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, EllipticCellFunctionImp >& elliptic_corrector,
+                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, InclusionCellFunctionImp >& inclusion_corrector,
+                                 double delta, std::string type)
+  {
+    //build DeltaCorrectorHelmholtz
+    typedef Dune::GDT::DeltaCorrectorHelmholtz< CoarseFunctionImp, EllipticCellFunctionImp, InclusionCellFunctionImp > DeltaCorrectorType;
+    DeltaCorrectorType corrector_real(elliptic_corrector.macro_function(), elliptic_corrector.cell_solutions(), inclusion_corrector.cell_solutions(),
+                                      filter_scatterer_, filter_inclusion_, wavenumber_, delta, "real");
+    DeltaCorrectorType corrector_imag(elliptic_corrector.macro_function(), elliptic_corrector.cell_solutions(), inclusion_corrector.cell_solutions(),
+                                      filter_scatterer_, filter_inclusion_, wavenumber_, delta, "imag");
+    //build errors
+    typedef Dune::Stuff::Functions::Difference< ReferenceFunctionImp, DeltaCorrectorType > DifferenceFunctionType;
+    DifferenceFunctionType error_real(reference_sol[0], corrector_real);
+    DifferenceFunctionType error_imag(reference_sol[1], corrector_imag);
+    //compute errors depending on type
+    RangeFieldType result = 0;
+    if(type == "l2") {  //maybe weigh it with k^2
+      Dune::GDT::Products::L2< typename ReferenceFunctionImp::SpaceType::GridViewType > l2_product(reference_sol[0].space().grid_view());
+      result += l2_product.apply2(error_real, error_real);
+      result += l2_product.apply2(error_imag, error_imag);
+      return std::sqrt(result);
+    }
+    else if(type == "h1semi") {
+      Dune::GDT::Products::H1Semi< typename ReferenceFunctionImp::SpaceType::GridViewType > h1_product(reference_sol[0].space().grid_view());
+      result += h1_product.apply2(error_real, error_real);
+      result += h1_product.apply2(error_imag, error_imag);
+      return std::sqrt(result);
+    }
+    else
+      DUNE_THROW(Dune::NotImplemented, "This type of norm is not implemented");
+  } //reference error
+
 private:
   const SpaceType                     coarse_space_;
   const BoundaryInfoType&             bdry_info_;
