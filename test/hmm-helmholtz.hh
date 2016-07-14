@@ -418,9 +418,9 @@ public:
     return elliptic_cell_.effective_matrix();
   }
 
-  std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > > effective_mu() const
+  std::complex< RangeFieldType > effective_mu() const
   {
-    return inclusion_cell_.effective_matrix();
+    return inclusion_cell_.effective_param();
   }
 
   const MatrixType& system_matrix() const

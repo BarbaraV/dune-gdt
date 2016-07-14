@@ -33,7 +33,6 @@
 #include <dune/gdt/localevaluation/hmm.hh>
 #include <dune/gdt/localevaluation/product.hh>
 #include <dune/gdt/localoperator/codim0.hh>
-#include <dune/gdt/localoperator/hmmcodim0.hh>
 #include <dune/gdt/operators/curlcurl.hh>
 #include <dune/gdt/operators/cellreconstruction.hh>
 #include <dune/gdt/assembler/local/codim0.hh>
