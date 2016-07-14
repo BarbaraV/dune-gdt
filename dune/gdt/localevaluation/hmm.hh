@@ -1158,19 +1158,21 @@ public:
         < EntityType, DomainFieldType, dimDomain, R, 1, 1 >::RangeFieldType    RangeFieldType;
     //clear return matrix
     ret *= 0.;
-    //evaluate testGradient
+    //evaluate testBase
     const size_t rows = testBase.size();
     auto tValue = testBase.evaluate(localPoint);
-    //evaluate ansatz gradient
+    //evaluate ansatzBase
     const size_t cols = ansatzBase.size();
     auto aValue = ansatzBase.evaluate(localPoint);
     assert(ret.rows()>= rows);
     assert(ret.cols()>= cols);
-    // product -k^2 u*v
-    for (size_t ii = 0; ii < rows; ++ii) {
-      auto& retRow = ret[ii];
-      for (size_t jj = 0; jj < cols; ++jj) {
-        retRow[jj] -= wavenumber_ * wavenumber_ * (aValue[jj] * tValue[ii]);
+    // product -k^2 u*v for real part only!
+    if (real_part_) {
+      for (size_t ii = 0; ii < rows; ++ii) {
+        auto& retRow = ret[ii];
+        for (size_t jj = 0; jj < cols; ++jj) {
+          retRow[jj] -= wavenumber_ * wavenumber_ * (aValue[jj] * tValue[ii]);
+        }
       }
     }
     assert(cell_solutions_.size()==1);
