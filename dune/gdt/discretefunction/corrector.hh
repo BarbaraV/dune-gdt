@@ -603,14 +603,14 @@ public:
    * @param ret matrix vector the evaluation is stored in
    * @note only the zero'th order terms are considered
    */
-  virtual void jacobian(const DomainType& /*xx*/, JacobianRangeType& /*ret*/) const override final
+  virtual void jacobian(const DomainType& xx, JacobianRangeType& ret) const override final
   {
-     DUNE_THROW(Dune::NotImplemented, "Not yet implemented");
-    /* //clear ret
+    //clear ret
     ret *= 0;
     //tmp storage
     std::vector< JacobianRangeType > macro_jacobian(macro_function_.size(), JacobianRangeType(0));
-    std::vector< RangeType > macro_curl(macro_function_.size(), RangeType(0));
+    std::vector< RangeType > macro_total(macro_function_.size(), RangeType(0));
+    bool inside_scatterer;
     //entity search in the macro grid view
     typedef typename CoarseFunctionImp::SpaceType::GridViewType MacroGridViewType;
     Dune::Stuff::Grid::EntityInlevelSearch< MacroGridViewType > entity_search(macro_function_[0].space().grid_view());
@@ -623,12 +623,11 @@ public:
       const auto source_entity_ptr1 = *source_entity_unique_ptr;
       const auto& source_entity = *source_entity_ptr1;
       const auto local_source_point = source_entity.geometry().local(xx);
+      inside_scatterer = filter_scatterer_(macro_function_[0].space().grid_view(), source_entity);
       //evaluate macro function and its jacobian
       for (size_t ii = 0; ii < macro_function_.size(); ++ii) {
         macro_function_[ii].local_function(source_entity)->jacobian(local_source_point, macro_jacobian[ii]);
-        macro_curl[ii][0] = macro_jacobian[ii][2][1] - macro_jacobian[ii][1][2];
-        macro_curl[ii][1] = macro_jacobian[ii][0][2] - macro_jacobian[ii][2][0];
-        macro_curl[ii][2] = macro_jacobian[ii][1][0] - macro_jacobian[ii][0][1];
+        macro_function_[ii].local_function(source_entity)->evaluate(local_source_point, macro_total[ii]);
       }
     }
     if (part_ == "real")
@@ -637,49 +636,84 @@ public:
       ret += macro_jacobian[1];
     else
       DUNE_THROW(Dune::NotImplemented, "You can only compute real or imag part");
-    //preparation for fine part
-    DomainType yy(xx);
-    yy /= delta_;
-    DomainFieldType intpart;
-    for (size_t ii = 0; ii < CoarseFunctionImp::dimDomain; ++ii) {
-      auto fracpart = std::modf(yy[ii], &intpart);
-      if (fracpart < 0)
-        yy[ii] = 1 + fracpart;
-      else
-        yy[ii] = fracpart;
-    }
-    //now yy is a (global) point in the unit cube
-    //do now the same entity search as before, but for the unit cube grid view
-    std::vector< std::vector< typename FineFunctionCurlImp::JacobianRangeType > >
-      curl_cell_jacobian(curl_cell_solutions_.size(), std::vector< typename FineFunctionCurlImp::JacobianRangeType >(curl_cell_solutions_[0].size()));
-    typedef typename FineFunctionCurlImp::SpaceType::GridViewType FineGridViewType;
-    Dune::Stuff::Grid::EntityInlevelSearch< FineGridViewType > entity_search_fine(curl_cell_solutions_[0][0].space().grid_view());
-    std::vector< Dune::FieldVector< typename FineGridViewType::ctype, FineGridViewType::dimension > > fine_point(1);
-    fine_point[0] = yy;
-    const auto source_entity_ptr_fine = entity_search_fine(fine_point);
-    assert(source_entity_ptr_fine.size() == 1);
-    const auto& source_entity_unique_ptr_fine = source_entity_ptr_fine[0];
-    if(source_entity_unique_ptr_fine) {
-      const auto source_entity_ptr1 = *source_entity_unique_ptr_fine;
-      const auto& source_entity = *source_entity_ptr1;
-      const auto local_source_point = source_entity.geometry().local(yy);
-      //evaluate curl cell solutions' jacobian
-      for (size_t ii = 0; ii < curl_cell_solutions_.size(); ++ii) {
-        for (size_t jj = 0; jj < curl_cell_solutions_[ii].size(); ++jj)
-          curl_cell_solutions_[ii][jj].local_function(source_entity)->jacobian(local_source_point, curl_cell_jacobian[ii][jj]);
-        if (part_ == "real") {
-          ret.axpy(macro_curl[0][ii], curl_cell_jacobian[ii][0]); //real*real
-          if (curl_cell_solutions_[ii].size() > 1)
-            ret.axpy(-1*macro_curl[1][ii], curl_cell_jacobian[ii][1]); //-imag*imag
-        }
-        else if (part_ == "imag") {
-          ret.axpy(macro_curl[1][ii], curl_cell_jacobian[ii][0]); //imag*real
-          if(curl_cell_solutions_[ii].size() > 1)
-            ret.axpy(macro_curl[0][ii], curl_cell_jacobian[ii][1]); //real*imag
-        }
+    if (inside_scatterer) {
+      //preparation for fine part
+      DomainType yy(xx);
+      yy /= delta_;
+      DomainFieldType intpart;
+      for (size_t ii = 0; ii < CoarseFunctionImp::dimDomain; ++ii) {
+        auto fracpart = std::modf(yy[ii], &intpart);
+        if (fracpart < 0)
+          yy[ii] = 1 + fracpart;
+        else
+          yy[ii] = fracpart;
       }
+      //now yy is a (global) point in the unit cube
+      //do now the same entity search as before, but for the unit cube grid view
+      std::vector< std::vector< typename FineFunctionGradImp::JacobianRangeType > >
+        ell_cell_jacobian(elliptic_cell_solutions_.size(), std::vector< typename FineFunctionGradImp::JacobianRangeType >(elliptic_cell_solutions_[0].size()));
+      std::vector< std::vector< typename FineFunctionIdImp::JacobianRangeType > >
+        incl_cell_jacobian(inclusion_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::JacobianRangeType >(inclusion_cell_solutions_[0].size()));
+      bool inside_inclusion;
+      typedef typename FineFunctionGradImp::SpaceType::GridViewType FineGridViewType;
+      Dune::Stuff::Grid::EntityInlevelSearch< FineGridViewType > entity_search_fine(elliptic_cell_solutions_[0][0].space().grid_view());
+      std::vector< Dune::FieldVector< typename FineGridViewType::ctype, FineGridViewType::dimension > > fine_point(1);
+      fine_point[0] = yy;
+      const auto source_entity_ptr_fine = entity_search_fine(fine_point);
+      assert(source_entity_ptr_fine.size() == 1);
+      const auto& source_entity_unique_ptr_fine = source_entity_ptr_fine[0];
+      if(source_entity_unique_ptr_fine) {
+        const auto source_entity_ptr1 = *source_entity_unique_ptr_fine;
+        const auto& source_entity = *source_entity_ptr1;
+        const auto local_source_point = source_entity.geometry().local(yy);
+        inside_inclusion = !filter_inclusion_(elliptic_cell_solutions_[0][0].space().grid_view(), source_entity);
+        if (!inside_inclusion) {
+          //evaluate elliptic cell solutions' jacobian
+          for (size_t ii = 0; ii < elliptic_cell_solutions_.size(); ++ii) {
+            for (size_t jj = 0; jj < elliptic_cell_solutions_[ii].size(); ++jj)
+              elliptic_cell_solutions_[ii][jj].local_function(source_entity)->jacobian(local_source_point, ell_cell_jacobian[ii][jj]);
+            if (part_ == "real") {
+              ret.axpy(macro_jacobian[0][0][ii], ell_cell_jacobian[ii][0]); //real*real
+              if (elliptic_cell_solutions_[ii].size() > 1)
+                ret.axpy(-1*macro_jacobian[1][0][ii], ell_cell_jacobian[ii][1]); //-imag*imag
+            }
+            else if (part_ == "imag") {
+              ret.axpy(macro_jacobian[1][0][ii], ell_cell_jacobian[ii][0]); //imag*real
+              if(elliptic_cell_solutions_[ii].size() > 1)
+                ret.axpy(macro_jacobian[0][0][ii], ell_cell_jacobian[ii][1]); //real*imag
+            }
+          }
+        } //only if we are not in the inclusions
+      }
+      if (inside_inclusion) {
+        //now do an entitysearch in the inclusion grid_view
+        typedef typename FineFunctionIdImp::SpaceType::GridViewType FineInclGridViewType;
+        Dune::Stuff::Grid::EntityInlevelSearch< FineInclGridViewType > entity_search_fine_incl(inclusion_cell_solutions_[0][0].space().grid_view());
+        std::vector< Dune::FieldVector< typename FineInclGridViewType::ctype, FineInclGridViewType::dimension > > fine_point_incl(1);
+        fine_point_incl[0] = yy;
+        const auto source_entity_ptr_fine_incl = entity_search_fine_incl(fine_point_incl);
+        assert(source_entity_ptr_fine_incl.size() == 1);
+        const auto& source_entity_unique_ptr_fine_incl = source_entity_ptr_fine_incl[0];
+        if(source_entity_unique_ptr_fine_incl) {
+          const auto source_entity_ptr1 = *source_entity_unique_ptr_fine_incl;
+          const auto& source_entity = *source_entity_ptr1;
+          const auto local_source_point = source_entity.geometry().local(yy);
+          assert(inclusion_cell_solutions_.size() == 1);
+          for (size_t jj = 0; jj < inclusion_cell_solutions_[0].size(); ++jj)
+            inclusion_cell_solutions_[0][jj].local_function(source_entity)->jacobian(local_source_point, incl_cell_jacobian[0][jj]);
+          if (part_ == "real") {
+            ret.axpy(wavenumber_ * wavenumber_ * macro_total[0]/delta_, incl_cell_jacobian[0][0]); //real*real
+            if (inclusion_cell_solutions_[0].size() > 1)
+              ret.axpy(-1* wavenumber_ * wavenumber_ * macro_total[1]/delta_, incl_cell_jacobian[0][1]); //-imag*imag
+          }
+          else if (part_ == "imag") {
+            ret.axpy(wavenumber_ * wavenumber_ * macro_total[1]/delta_,  incl_cell_jacobian[0][0]); //imag*real
+            if (inclusion_cell_solutions_[0].size() > 1)
+              ret.axpy(wavenumber_ * wavenumber_ * macro_total[0]/delta_, incl_cell_jacobian[0][1]); //real*imag
+          }
+        }
+      }  //inside the inclusion
     }
-    */
   } //jacobian
 
 
