@@ -654,6 +654,8 @@ public:
         ell_cell_jacobian(elliptic_cell_solutions_.size(), std::vector< typename FineFunctionGradImp::JacobianRangeType >(elliptic_cell_solutions_[0].size()));
       std::vector< std::vector< typename FineFunctionIdImp::JacobianRangeType > >
         incl_cell_jacobian(inclusion_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::JacobianRangeType >(inclusion_cell_solutions_[0].size()));
+     // std::vector< std::vector< typename FineFunctionIdImp::RangeType > >
+     //   incl_cell_eval(inclusion_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::RangeType >(inclusion_cell_solutions_[0].size()));
       bool inside_inclusion;
       typedef typename FineFunctionGradImp::SpaceType::GridViewType FineGridViewType;
       Dune::Stuff::Grid::EntityInlevelSearch< FineGridViewType > entity_search_fine(elliptic_cell_solutions_[0][0].space().grid_view());
@@ -699,17 +701,27 @@ public:
           const auto& source_entity = *source_entity_ptr1;
           const auto local_source_point = source_entity.geometry().local(yy);
           assert(inclusion_cell_solutions_.size() == 1);
-          for (size_t jj = 0; jj < inclusion_cell_solutions_[0].size(); ++jj)
+          for (size_t jj = 0; jj < inclusion_cell_solutions_[0].size(); ++jj) {
             inclusion_cell_solutions_[0][jj].local_function(source_entity)->jacobian(local_source_point, incl_cell_jacobian[0][jj]);
+            //inclusion_cell_solutions_[0][jj].local_function(source_entity)->evaluate(local_source_point, incl_cell_eval[0][jj]);
+          }
           if (part_ == "real") {
+            ret -= macro_jacobian[0];
             ret.axpy(wavenumber_ * wavenumber_ * macro_total[0]/delta_, incl_cell_jacobian[0][0]); //real*real
-            if (inclusion_cell_solutions_[0].size() > 1)
+            //ret.axpy(wavenumber_ * wavenumber_ * incl_cell_eval[0][0], macro_jacobian[0]); //real*real
+            if (inclusion_cell_solutions_[0].size() > 1) {
               ret.axpy(-1* wavenumber_ * wavenumber_ * macro_total[1]/delta_, incl_cell_jacobian[0][1]); //-imag*imag
+              //ret.axpy(-1* wavenumber_ * wavenumber_ * incl_cell_eval[0][1], macro_jacobian[1]); //-imag*imag
+            }
           }
           else if (part_ == "imag") {
+            ret -= macro_jacobian[1];
             ret.axpy(wavenumber_ * wavenumber_ * macro_total[1]/delta_,  incl_cell_jacobian[0][0]); //imag*real
-            if (inclusion_cell_solutions_[0].size() > 1)
+            //ret.axpy(wavenumber_ * wavenumber_ * incl_cell_eval[0][0],  macro_jacobian[1]); //imag*real
+            if (inclusion_cell_solutions_[0].size() > 1) {
               ret.axpy(wavenumber_ * wavenumber_ * macro_total[0]/delta_, incl_cell_jacobian[0][1]); //real*imag
+              //ret.axpy(wavenumber_ * wavenumber_ * incl_cell_eval[0][1], macro_jacobian[0]); //real*imag
+            }
           }
         }
       }  //inside the inclusion
