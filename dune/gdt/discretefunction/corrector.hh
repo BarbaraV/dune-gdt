@@ -656,7 +656,7 @@ public:
         incl_cell_jacobian(inclusion_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::JacobianRangeType >(inclusion_cell_solutions_[0].size()));
      // std::vector< std::vector< typename FineFunctionIdImp::RangeType > >
      //   incl_cell_eval(inclusion_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::RangeType >(inclusion_cell_solutions_[0].size()));
-      bool inside_inclusion;
+      bool inside_inclusion = true;
       typedef typename FineFunctionGradImp::SpaceType::GridViewType FineGridViewType;
       Dune::Stuff::Grid::EntityInlevelSearch< FineGridViewType > entity_search_fine(elliptic_cell_solutions_[0][0].space().grid_view());
       std::vector< Dune::FieldVector< typename FineGridViewType::ctype, FineGridViewType::dimension > > fine_point(1);
