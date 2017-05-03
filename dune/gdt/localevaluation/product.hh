@@ -397,6 +397,198 @@ private:
   const LocalizableFunctionType& inducingFunction_;
 }; // class Product
 
+/**
+ *  \brief  Computes a product evaluation between the tangential components.
+ */
+template< class LocalizableFunctionImp >
+class ProductTangential
+  : public LocalEvaluation::Codim1Interface< internal::ProductTraits< LocalizableFunctionImp >, 1 >
+  , public LocalEvaluation::Codim1Interface< internal::ProductTraits< LocalizableFunctionImp >, 2 >
+{
+public:
+  typedef internal::ProductTraits< LocalizableFunctionImp > Traits;
+  typedef typename Traits::LocalizableFunctionType          LocalizableFunctionType;
+  typedef typename Traits::LocalfunctionTupleType           LocalfunctionTupleType;
+  typedef typename Traits::EntityType                       EntityType;
+  typedef typename Traits::DomainFieldType                  DomainFieldType;
+  static const size_t                                       dimDomain = Traits::dimDomain;
+
+  ProductTangential(const LocalizableFunctionType& inducingFunction)
+    : inducingFunction_(inducingFunction)
+  {}
+
+  /// \name Required by all variants of LocalEvaluation::Codim0Interface
+  /// \{
+
+  LocalfunctionTupleType localFunctions(const EntityType& entity) const
+  {
+    return std::make_tuple(inducingFunction_.local_function(entity));
+  }
+
+  /// \}
+  /// \name Required by LocalEvaluation::Codim1Interface< ..., 1 >
+  /// \{
+
+  /**
+   * \brief extracts the local function and calls the correct order() method
+   */
+  template< class R, size_t rT, size_t rCT >
+  size_t order(const LocalfunctionTupleType& localFuncs,
+               const Stuff::LocalfunctionSetInterface
+                   < EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase) const
+  {
+    return order(*std::get< 0 >(localFuncs), testBase);
+  }
+  /**
+   * \brief extracts the local function and calls the correct evaluate() method
+   */
+  template< class IntersectionType, class R, size_t r, size_t rC >
+  void evaluate(const LocalfunctionTupleType& localFuncs,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, rC >& testBase,
+                const IntersectionType& intersection,
+                const Dune::FieldVector< DomainFieldType, dimDomain - 1 >& localPoint,
+                Dune::DynamicVector< R >& ret) const
+  {
+    evaluate(*std::get< 0 >(localFuncs), testBase, intersection, localPoint, ret);
+  }
+  /// \}
+
+  /// \name Required by LocalEvaluation::Codim1Interface< ..., 2 >
+  /// \{
+
+  /**
+   * \brief extracts the local function and calls the correct evaluate() method
+   */
+  template< class IntersectionType, class R, size_t rT, size_t rCT, size_t rA, size_t rCA >
+  void evaluate(const LocalfunctionTupleType& localFunctions_in,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase,
+                const IntersectionType& intersection,
+                const Dune::FieldVector< DomainFieldType, dimDomain - 1 >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    evaluate(*std::get< 0 >(localFunctions_in), testBase, ansatzBase, intersection, localPoint, ret);
+  }
+
+  /// \}
+  /// \name Required by LocalEvaluation::Codim0Interface< ..., 2 > and LocalEvaluation::Codim1Interface< ..., 2 >
+  /// \{
+
+  /**
+   * \brief extracts the local function and calls the correct order() method
+   */
+  template< class R, size_t rT, size_t rCT, size_t rA, size_t rCA >
+  size_t order(const LocalfunctionTupleType& localFuncs,
+               const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+               const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase)
+  const
+  {
+    return order(*std::get< 0 >(localFuncs), testBase, ansatzBase);
+  }
+
+  /// \}
+  /// \name Actual implementations of order
+  /// \{
+
+  /**
+   * \note   for `LocalEvaluation::Codim0Interface< ..., 1 >`
+   * \return localFunction.order() + testBase.order()
+   */
+  template< class R, size_t rL, size_t rCL, size_t rT, size_t rCT >
+  size_t order(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, rL, rCL >& localFunction,
+               const Stuff::LocalfunctionSetInterface
+                  < EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase) const
+  {
+    return localFunction.order() + testBase.order();
+  }
+
+  /**
+   * \note   for
+   *         - `LocalEvaluation::Codim0Interface< ..., 2 >`
+   *         - `LocalEvaluation::Codim1Interface< ..., 2 >`
+   * \return localFunction.order() + testBase.order() + ansatzBase.order()
+   */
+  template< class R, size_t rL, size_t rCL, size_t rT, size_t rCT, size_t rA, size_t rCA >
+  size_t order(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, rL, rCL >& localFunction,
+               const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+               const Stuff::LocalfunctionSetInterface
+                  < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase) const
+  {
+    return localFunction.order() + testBase.order() + ansatzBase.order();
+  }
+
+  /// \}
+  /// \name Actual implementations of evaluate
+  /// \{
+
+  /**
+   * \note for `LocalEvaluation::Codim1Interface< ..., 1 >`
+   */
+  template< class IntersectionType, class R >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >& testBase,
+                const IntersectionType& intersection,
+                const Dune::FieldVector< DomainFieldType, dimDomain - 1 >& localPoint,
+                Dune::DynamicVector< R >& ret) const
+  {
+    const auto unit_normal = intersection.unitOuterNormal(localPoint);
+    // evaluate local function
+    const auto localPointEntity = intersection.geometryInInside().global(localPoint);
+    const auto functionValue = localFunction.evaluate(localPointEntity);
+    // evaluate test base
+    const size_t size = testBase.size();
+    auto testValues = testBase.evaluate(localPointEntity);
+    // compute product
+    assert(ret.size() >= size);
+    for (size_t ii = 0; ii < size; ++ii) {
+      testValues[ii].axpy(-1*(testValues[ii] * unit_normal), unit_normal); //tangential component
+      ret[ii] = functionValue * testValues[ii];
+    }
+  } // ... evaluate(...)
+
+  /**
+   * \brief Computes a product evaluation for a scalar local function and scalar or vector valued basefunctionsets.
+   * \note  for `LocalEvaluation::Codim1Interface< ..., 2 >`
+   */
+  template< class IntersectionType, class R >
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >& testBase,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >& ansatzBase,
+                const IntersectionType& intersection,
+                const Dune::FieldVector< DomainFieldType, dimDomain - 1 >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    const auto unit_normal = intersection.unitOuterNormal(localPoint);
+    const auto localPointEntity = intersection.geometryInInside().global(localPoint);
+    // evaluate local function
+    const auto functionValue = localFunction.evaluate(localPointEntity);
+    // evaluate bases
+    const size_t rows = testBase.size();
+    const size_t cols = ansatzBase.size();
+    auto testValues = testBase.evaluate(localPointEntity);
+    auto ansatzValues = ansatzBase.evaluate(localPointEntity);
+    // compute product
+    assert(ret.rows() >= rows);
+    assert(ret.cols() >= cols);
+    //tangential componenents of ansatzBase
+    for (size_t jj = 0; jj < cols; ++jj) {
+      ansatzValues[jj].axpy(-1*(ansatzValues[jj] * unit_normal), unit_normal);
+    }
+    for (size_t ii = 0; ii < rows; ++ii) {
+      auto& retRow = ret[ii];
+      testValues[ii].axpy(-1*(testValues[ii] * unit_normal), unit_normal);  //tangential component
+      for (size_t jj = 0; jj < cols; ++jj) {
+        retRow[jj] = functionValue * (testValues[ii] * ansatzValues[jj]);
+      }
+    }
+  } // ... evaluate(...)
+
+  /// \}
+
+  const LocalizableFunctionType& inducingFunction_;
+}; // class ProductTangential
+
+
 } // namespace LocalEvaluation
 } // namespace GDT
 } // namespace Dune
