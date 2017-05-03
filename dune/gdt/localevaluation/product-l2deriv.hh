@@ -511,6 +511,116 @@ private:
 }; // class VectorL2curl
 
 
+/**
+ *  \brief  Computes a product evaluation between a scalar valued local l2 function, a constant vector of vectors and a vector-valued test space.
+ */
+template< class LocalizableFunctionImp, class VectorofVectors >
+class VectorL2
+  : public LocalEvaluation::Codim0Interface< internal::L2gradTraits< LocalizableFunctionImp >, 1 >
+{
+public:
+  typedef internal::L2gradTraits< LocalizableFunctionImp >  Traits;
+  typedef typename Traits::LocalizableFunctionType          LocalizableFunctionType;
+  typedef typename Traits::LocalfunctionTupleType           LocalfunctionTupleType;
+  typedef typename Traits::EntityType                       EntityType;
+  typedef typename Traits::DomainFieldType                  DomainFieldType;
+  static const size_t                                       dimDomain = Traits::dimDomain;
+
+  VectorL2(const LocalizableFunctionType& inducingFunction, const VectorofVectors& vectors, const size_t num_vector)
+    : inducingFunction_(inducingFunction)
+    , vectors_(vectors)
+    , num_vector_(num_vector)
+  {}
+
+  /// \name Required by all variants of LocalEvaluation::Codim0Interface
+  /// \{
+
+  LocalfunctionTupleType localFunctions(const EntityType& entity) const
+  {
+    return std::make_tuple(inducingFunction_.local_function(entity));
+  }
+
+  /// \}
+  /// \name Required by LocalEvaluation::Codim0Interface< ..., 1 >
+  /// \{
+
+  /**
+   * \brief extracts the local function and calls the correct order() method
+   */
+  template< class R, size_t rT, size_t rCT >
+  size_t order(const LocalfunctionTupleType& localFuncs,
+               const Stuff::LocalfunctionSetInterface
+                   < EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase) const
+  {
+    return order(*std::get< 0 >(localFuncs), testBase);
+  }
+
+  /**
+   * \brief extracts the local function and calls the correct evaluate() method
+   */
+  template< class R, size_t rT, size_t rCT >
+  void evaluate(const LocalfunctionTupleType& localFuncs,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicVector< R >& ret) const
+  {
+    evaluate(*std::get< 0 >(localFuncs), testBase, localPoint, ret);
+  }
+
+  /// \}
+  /// \name Actual implementation of order
+  /// \{
+
+  /**
+   * \note   for `LocalEvaluation::Codim0Interface< ..., 1 >`
+   * \return localFunction.order() + testBase.order()-1
+   */
+  template< class R, size_t rL, size_t rCL, size_t rT, size_t rCT >
+  size_t order(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, rL, rCL >& localFunction,
+               const Stuff::LocalfunctionSetInterface
+                  < EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase) const
+  {
+    return localFunction.order() + testBase.order();
+  }
+
+
+  /// \}
+  /// \name Actual implementation of evaluate
+  /// \{
+
+  /**
+   * \brief computes a product evaluation between a scalar valued local l2 function, a constant vector and the test space
+   */
+  template< class R, size_t r>
+  void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,
+                const Stuff::LocalfunctionSetInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& testBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicVector< R >& ret) const
+  {
+    typedef typename Stuff::LocalfunctionSetInterface
+         < EntityType, DomainFieldType, dimDomain, R, r, 1 >::RangeType RangeType;
+    // evaluate local function
+    const auto functionValue = localFunction.evaluate(localPoint);
+    const auto vector = vectors_[num_vector_];
+    // evaluate test base
+    const size_t size = testBase.size();
+    std::vector< RangeType > testvalues(size, RangeType(0));
+    testBase.evaluate(localPoint, testvalues);
+    // compute product
+    assert(ret.size() >= size);
+    for (size_t ii = 0; ii < size; ++ii) {
+      ret[ii] = functionValue * (vector * testvalues[ii]);
+    }
+  } // ... evaluate(...)
+
+  /// \}
+
+private:
+  const LocalizableFunctionType& inducingFunction_;
+  const VectorofVectors&         vectors_;
+  const size_t                   num_vector_;
+}; // class VectorL2
+
 } //namespace LocalEvaluation
 } //namespace GDT
 } //namespace Dune
