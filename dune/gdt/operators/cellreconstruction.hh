@@ -358,6 +358,8 @@ protected:
 /** \brief Class for the correction of the curl of the macroscopic solution
  * \tparam CoarseSpaceType Type of space the corrections are computed from
  * \tparam CellGridType Type of grid to use for the unit cube
+ *
+ * \note an optional member variable filter_ makes it possible to solve the cell problem only on a part of the cube
  */
 template< class CoarseSpaceType, class CellGridType >
 class CurlCellReconstruction
@@ -386,6 +388,7 @@ public:
   using BaseType::dimRange;
 
   typedef Dune::Stuff::LocalizableFunctionInterface< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, 1 >     ScalarFct;
+  typedef std::function< bool(const PeriodicViewType&, const PeriodicEntityType&) >                                          FilterType;
 
   typedef LocalOperator::Codim0Integral< LocalEvaluation::CurlCurl< ScalarFct > > CurlOperator;
   typedef LocalOperator::Codim0Integral< LocalEvaluation::Divdiv< ScalarFct > >   DivOperator;
@@ -402,8 +405,29 @@ public:
   using BaseType::system_assembler_;
 
   CurlCellReconstruction(const CoarseSpaceType& coarse_space, CellGridType& cell_grid, const ScalarFct& mu,
-                         const ScalarFct& divparam = Stuff::Functions::Constant< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, 1>(0.01),
-                         const ScalarFct& idparam = Stuff::Functions::Constant< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, 1>(0.0001))
+                         const ScalarFct& divparam, const ScalarFct& idparam,
+			 FilterType filter)
+    : BaseType(coarse_space, cell_grid, false)
+    , mu_(mu)
+    , div_param_(divparam)
+    , id_param_(idparam)
+    , curl_op_(mu_)
+    , div_op_(div_param_)
+    , id_op_(id_param_)
+    , curl_assembler_(curl_op_)
+    , div_assembler_(div_op_)
+    , id_assembler_(id_op_)
+    , filter_(filter)
+  {
+    assert(filter_);  //not empty
+    system_assembler_.add(curl_assembler_, system_matrix_, new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
+    system_assembler_.add(div_assembler_, system_matrix_, new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
+    //(maybe) add an identity term for stabilization
+    system_assembler_.add(id_assembler_, system_matrix_);
+  }
+
+  CurlCellReconstruction(const CoarseSpaceType& coarse_space, CellGridType& cell_grid, const ScalarFct& mu,
+                         const ScalarFct& divparam, const ScalarFct& idparam)
     : BaseType(coarse_space, cell_grid, false)
     , mu_(mu)
     , div_param_(divparam)
@@ -420,6 +444,7 @@ public:
     //(maybe) add an identity term for stabilization
     system_assembler_.add(id_assembler_, system_matrix_);
   }
+
 
   /**
    * @brief assemble_all_local_rhs Assembles the rhs of the cell problems for all base functions on the entity
@@ -450,7 +475,10 @@ public:
               local_rhs_functional(mu_, tmp_curls, num_coarsebase);
       auto& rhs_vector = cell_solutions[num_coarsebase]->operator[](0).vector();
       rhs_functionals[num_coarsebase] = DSC::make_unique<RhsFunctionalType>(mu_, rhs_vector, cell_space_, local_rhs_functional);
-      system_assembler_.add(*rhs_functionals[num_coarsebase]);
+      if (filter_)
+        system_assembler_.add(*rhs_functionals[num_coarsebase], new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
+      else
+        system_assembler_.add(*rhs_functionals[num_coarsebase]);
     }
    system_assembler_.assemble();
   }
@@ -474,7 +502,10 @@ public:
               local_rhs_functional(mu_, unit_mat, ii);
       auto& rhs_vector = cell_solutions[ii]->operator[](0).vector();
       rhs_functionals[ii] = DSC::make_unique<RhsFunctionalType>(mu_, rhs_vector, cell_space_, local_rhs_functional);
-      system_assembler_.add(*rhs_functionals[ii]);
+      if (filter_)
+        system_assembler_.add(*rhs_functionals[ii], new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
+      else
+        system_assembler_.add(*rhs_functionals[ii]);
     }
     system_assembler_.assemble();
   } //assemble_cell_solutions_rhs
@@ -522,7 +553,11 @@ public:
       apply(current_rhs, current_solution);
     }
     auto unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
-    const auto averageparam = this->average(mu_);
+    typename ScalarFct::RangeType averageparam;
+    if(filter_)
+      averageparam = average_with_filter(mu_);
+    else
+      averageparam = this->average(mu_);
     FieldMatrix< RangeFieldType, dimDomain, dimDomain > ret;
     //compute matrix
     for (size_t ii = 0; ii < dimDomain; ++ii) {
@@ -536,6 +571,40 @@ public:
     return ret;
   } //effective_matrix
 
+  /** \brief averages a function over the part of the unit cube described by filter_
+   *
+   */
+  template< class FunctionType >
+  typename FunctionType::RangeType average_with_filter(FunctionType& function) const
+  {
+    assert(filter_);
+    typename FunctionType::RangeType result(0.0);
+    //integrate, but only over entities with filter_=true
+    for (const auto& entity : DSC::entityRange(cell_space_.grid_view()) ) {
+      if (filter_(cell_space_.grid_view(), entity)) {
+        const auto localparam = function.local_function(entity);
+        const size_t int_order = localparam->order();
+        //get quadrature rule
+        typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+        typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+        const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(int_order));
+        //loop over all quadrature points
+        const auto quadPointEndIt = volumeQuadrature.end();
+        for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
+          const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+          //intergation factors
+          const double integration_factor = entity.geometry().integrationElement(x);
+          const double quadrature_weight = quadPointIt->weight();
+          //evaluate
+          auto evaluation_result = localparam->evaluate(x);
+          evaluation_result *= (quadrature_weight * integration_factor);
+          result += evaluation_result;
+        } //loop over quadrature points
+      } //only appply on entities with filter_=true
+    } //loop over entities
+    return result;
+  } //average_with_filter
+
 private:
   const ScalarFct&                 mu_;
   const ScalarFct&                 div_param_;
@@ -546,6 +615,7 @@ private:
   mutable CurlAssembler            curl_assembler_;
   mutable DivAssembler             div_assembler_;
   mutable IdAssembler              id_assembler_;
+  const FilterType		   filter_;
 }; //class CurlCellReconstruction
 
 
@@ -1006,6 +1076,215 @@ private:
   const FilterType                 filter_;
 }; //class EllipticCellReconstruction
 
+
+/** Class for the correction of the macroscopic solution itself in the curlcurl high contrast case (outside inclusions)
+ * \tparam CoarseSpaceType Type of space the corrections are computed from
+ * \tparam CellGridType Type of grid for the unit cube
+ */
+template< class CoarseSpaceType, class CellGridType >
+class IdCellReconstruction
+  : public CellReconstruction< CoarseSpaceType, CellGridType,
+                               typename Spaces::CG::FemBased< typename Fem::PeriodicLeafGridPart< CellGridType >, 1, double, 1 >, false >
+{
+public:
+  typedef typename Spaces::CG::FemBased< typename Fem::PeriodicLeafGridPart< CellGridType >, 1, double, 1 > CellSpaceType;
+private:
+  typedef IdEllipticCellReconstruction< CoarseSpaceType, CellGridType >                                     ThisType;
+  typedef CellReconstruction< CoarseSpaceType, CellGridType, CellSpaceType, false >                         BaseType;
+public:
+  using typename BaseType::CoarseEntityType;
+  using typename BaseType::CoarseDomainType;
+  using typename BaseType::CellSolutionStorageType;
+  using typename BaseType::CellDiscreteFunctionType;
+  using typename BaseType::DomainFieldType;
+  using typename BaseType::PeriodicGridPartType;
+  using typename BaseType::PeriodicViewType;
+  using typename BaseType::PeriodicEntityType;
+  using typename BaseType::MatrixType;
+  using typename BaseType::VectorType;
+  using typename BaseType::RangeFieldType;
+  using BaseType::dimDomain;  
+
+  typedef Dune::Stuff::LocalizableFunctionInterface< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, 1 >     ScalarFct;
+  typedef std::function< bool(const PeriodicViewType&, const PeriodicEntityType&) >                                          FilterType;
+
+  typedef LocalOperator::Codim0Integral< LocalEvaluation::Elliptic< ScalarFct > > EllipticOperator;
+  typedef LocalAssembler::Codim0Matrix< EllipticOperator >                        LocalAssemblerType;
+  typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< ScalarFct > >  IdOperator;
+  typedef LocalAssembler::Codim0Matrix< IdOperator >                              IdAssemblerType;
+
+  using BaseType::coarse_space_;
+  using BaseType::grid_part_;
+  using BaseType::cell_space_;
+  using BaseType::system_matrix_;
+  using BaseType::system_assembler_;
+
+  IdCellReconstruction(const CoarseSpaceType& coarse_space, CellGridType& cell_grid, const ScalarFct& wave_number_squared,
+                       const ScalarFct& idparam, FilterType filter)
+    : BaseType(coarse_space, cell_grid, false)
+    , wave_nmbr_sqrd_(wave_number_squared)
+    , id_param_(idparam)
+    , elliptic_operator_(wave_nmbr_sqrd_)
+    , id_operator_(id_param_)
+    , local_assembler_(elliptic_operator_)
+    , id_assembler_(id_operator_)
+    , filter_(filter)
+  {
+    assert(filter_);
+    system_assembler_.add(local_assembler_, system_matrix_, new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
+    system_assembler_.add(id_assembler_, system_matrix_);
+  }
+
+  /**
+   * @brief assemble_all_local_rhs Assembles the rhs of the cell problems for all base functions on the entity
+   * @param coarse_entity Entity of the macroscopic grid we want to compute the corrections for
+   * @param cell_solutions Vector of pointers to discrete functions to store the results in
+   * @param xx Local (macroscopic) point the base functions are evaluated at
+   */
+  void assemble_all_local_rhs(const CoarseEntityType& coarse_entity, CellSolutionStorageType& cell_solutions, const CoarseDomainType& xx) const override final
+  {
+    assert(cell_solutions.size() > 0 && "You have to pre-allocate space");
+    Stuff::Functions::Constant< PeriodicEntityType, DomainFieldType, dimDomain, double, 1 > one(1.0);
+    const auto coarse_basefunction_set = coarse_space_.base_function_set(coarse_entity);
+    typedef std::vector< typename CoarseSpaceType::BaseFunctionSetType::RangeType > VectorofVectors;
+    VectorofVectors tmp_values(coarse_basefunction_set.size());
+    coarse_basefunction_set.evaluate(xx, tmp_values);
+    typedef GDT::Functionals::L2Volume< ScalarFct, VectorType, CellSpaceType, PeriodicViewType,
+                                        LocalEvaluation::VectorL2grad< ScalarFct, VectorofVectors > > RhsFunctionalType;
+    std::vector<std::unique_ptr< RhsFunctionalType > > rhs_functionals(coarse_basefunction_set.size());
+    for (size_t num_coarsebase = 0; num_coarsebase < coarse_basefunction_set.size(); ++num_coarsebase) {
+      assert(cell_solutions[num_coarsebase]);
+      GDT::LocalFunctional::Codim0Integral<LocalEvaluation::VectorL2grad< ScalarFct, VectorofVectors> >
+              local_rhs_functional(one, tmp_values, num_coarsebase);
+      auto& rhs_vector = cell_solutions[num_coarsebase]->operator[](0).vector();
+      rhs_functionals[num_coarsebase] = DSC::make_unique<RhsFunctionalType>(one, rhs_vector, cell_space_, local_rhs_functional);
+      system_assembler_.add(*rhs_functionals[num_coarsebase], new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
+    }
+   system_assembler_.assemble();
+  }
+
+  /**
+   * @brief assemble_cell_solutions_rhs Assembles rhs for computation of cell corrections
+   * @param cell_solutions Vector of pointers to discrete functions to store the results in
+   */
+  void assemble_cell_solutions_rhs(CellSolutionStorageType& cell_rhs) const override final
+  {
+    assert(cell_rhs.size() > 0 && "You have to pre-allocate space");
+    typedef FieldMatrix< RangeFieldType, dimDomain, dimDomain > VectorofVectorsType;
+    VectorofVectorsType unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
+    Stuff::Functions::Constant< PeriodicEntityType, DomainFieldType, dimDomain, double, 1 > one(1.0);
+    typedef GDT::Functionals::L2Volume< ScalarFct, VectorType, CellSpaceType, PeriodicViewType,
+                                        LocalEvaluation::VectorL2grad< ScalarFct, VectorofVectorsType > > RhsFunctionalType;
+    std::vector<std::unique_ptr< RhsFunctionalType > > rhs_functionals(dimDomain);
+    for (size_t ii = 0; ii < dimDomain; ++ii) {
+      assert(cell_rhs[ii]);
+      GDT::LocalFunctional::Codim0Integral<LocalEvaluation::VectorL2grad< ScalarFct, VectorofVectorsType> >
+              local_rhs_functional(one, unit_mat, ii);
+      auto& rhs_vector = cell_rhs[ii]->operator[](0).vector();
+      rhs_functionals[ii] = DSC::make_unique<RhsFunctionalType>(one, rhs_vector, cell_space_, local_rhs_functional);
+      system_assembler_.add(*rhs_functionals[ii], new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
+    }
+    system_assembler_.assemble();
+  } //assemble_cell_solutions_rhs
+
+  void apply(const VectorType& current_rhs, CellDiscreteFunctionType& current_solution) const override final
+  {
+    BaseType::apply(current_rhs, current_solution[0].vector());
+    //substract average
+    auto cell_average = this->average(current_solution[0]);
+    current_solution[0].vector() -= VectorType(cell_space_.mapper().size(), cell_average);
+  }
+
+  void apply(const CellDiscreteFunctionType& current_rhs, CellDiscreteFunctionType& current_solution) const override final
+  {
+    assert(current_rhs.size() > 0 && "This has to be a pre-allocated vector");
+    apply(current_rhs[0].vector(), current_solution);
+  }
+
+  /**
+   * @brief effective_matrix Computes the effective matrix belonging to this cell problem
+   * @return Vector with real and imaginary part of effective matrix
+   */
+  FieldMatrix< RangeFieldType, dimDomain, dimDomain > effective_matrix() const
+  {
+    CellSolutionStorageType cell_rhs(dimDomain);
+    for (auto& it : cell_rhs){
+      std::vector<DiscreteFunction< CellSpaceType, VectorType > > it1(1, DiscreteFunction< CellSpaceType, VectorType >(cell_space_));
+      it = DSC::make_unique< CellDiscreteFunctionType >(it1);
+    }
+    assemble_cell_solutions_rhs(cell_rhs);
+    CellSolutionStorageType cell_solutions(dimDomain);
+    for (auto& it : cell_solutions) {
+      std::vector<DiscreteFunction< CellSpaceType, VectorType > > it1(1, DiscreteFunction< CellSpaceType, VectorType >(cell_space_));
+      it = DSC::make_unique< CellDiscreteFunctionType >(it1);
+    }
+    for (size_t ii =0; ii < dimDomain; ++ii) {
+      auto& current_rhs = *cell_rhs[ii];
+      auto& current_solution = *cell_solutions[ii];
+      apply(current_rhs, current_solution);
+    }
+    auto unit_mat = Dune::Stuff::Functions::internal::unit_matrix< double, dimDomain >();
+    FieldMatrix< RangeFieldType, dimDomain, dimDomain >  ret;
+    //extract the value of wave_number_squared
+    auto wave_number_squared_value = this->average(wave_nmbr_sqrd_);
+    wave_number_squared_value *= -1.0;
+    //compute matrix
+    for (size_t ii = 0; ii < dimDomain; ++ii) {
+      auto& retRow = ret[ii];
+      Dune::Stuff::Functions::Constant< PeriodicEntityType, DomainFieldType, dimDomain, double, dimDomain > unit_mat_col(unit_mat[ii]);
+      auto average_vol = average_with_filter(unit_mat_col);
+      cell_rhs[ii]->operator[](0).vector().scal(wave_number_squared_value[0]);  //necessary for correct scaling of rhs with wave_number_squared_neg
+      for (size_t jj = 0; jj < dimDomain; ++jj) {
+        retRow[jj] += average_vol[jj];
+        retRow[jj] += (cell_rhs[ii]->operator[](0).vector()).dot(cell_solutions[jj]->operator[](0).vector());
+      }
+    }
+    return ret;
+  } //effective_matrix
+
+  /** \brief averages a function over the part of the unit cube described by filter_
+   *
+   */
+  template< class FunctionType >
+  typename FunctionType::RangeType average_with_filter(FunctionType& function) const
+  {
+    assert(filter_);
+    typename FunctionType::RangeType result(0.0);
+    //integrate, but only over entities with filter_=true
+    for (const auto& entity : DSC::entityRange(cell_space_.grid_view()) ) {
+      if (filter_(cell_space_.grid_view(), entity)) {
+        const auto localparam = function.local_function(entity);
+        const size_t int_order = localparam->order();
+        //get quadrature rule
+        typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+        typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+        const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(int_order));
+        //loop over all quadrature points
+        const auto quadPointEndIt = volumeQuadrature.end();
+        for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt) {
+          const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+          //intergation factors
+          const double integration_factor = entity.geometry().integrationElement(x);
+          const double quadrature_weight = quadPointIt->weight();
+          //evaluate
+          auto evaluation_result = localparam->evaluate(x);
+          evaluation_result *= (quadrature_weight * integration_factor);
+          result += evaluation_result;
+        } //loop over quadrature points
+      } //only appply on entities with filter_=true
+    } //loop over entities
+    return result;
+  } //average_with_filter
+
+private:
+  const ScalarFct&                 wave_nmbr_sqrd_;
+  const ScalarFct&                 id_param_;
+  mutable EllipticOperator         elliptic_operator_;
+  mutable IdOperator               id_operator_;
+  mutable LocalAssemblerType       local_assembler_;
+  mutable IdAssemblerType          id_assembler_;
+  const FilterType		   filter_;
+}; //class IdCellReconstruction
 
 } //namespace Operators
 } //namespace GDT
