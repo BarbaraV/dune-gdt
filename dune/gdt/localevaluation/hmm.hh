@@ -1341,8 +1341,8 @@ public:
 
   typedef typename Traits::FilterType FilterType;
 
-  explicit HMMmaxwellIdPeriodic(const CellProblemType& cell_problem,
-		                const InclusionProblemType& inclusion_problem
+  explicit HMMMaxwellIdPeriodic(const CellProblemType& cell_problem,
+		                const InclusionProblemType& inclusion_problem,
                                 const InclusionFunctionType& periodic_mu_real,
                                 const InclusionFunctionType& periodic_mu_imag,
                                 const double wavenumber,
