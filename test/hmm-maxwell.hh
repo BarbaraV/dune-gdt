@@ -344,8 +344,9 @@ public:
     system_assembler_.assemble();
     dirichlet_constraints.apply(system_matrix_real_);
     dirichlet_constraints.apply(system_matrix_imag_);
-    for (size_t ii = 0; ii < dimDomain; ++ii)
+    for (size_t ii = 0; ii < dimDomain; ++ii) {
       dirichlet_constraints.apply(cell_rhs[ii]->operator[](0).vector());
+    }
     //make complex matrix
     complextype im(0.0, 1.0);
     system_matrix_.backend() = system_matrix_imag_.backend().template cast< complextype >();
@@ -539,5 +540,382 @@ if (xx[2]>=d_left && xx[2] <= d_right ) {
 double b_edges = b1 * b2 * b3 * b4 * b5 * b6 * b7 * b8 * b9 * b10 * b11 * b12;
 return a_corner * b_edges;
 }
+
+
+template< class MacroGridViewType, class CellGridType, class InclusionGridViewType, int polynomialOrder >
+class HMMMaxwellDiscretization {
+public:
+  typedef typename MacroGridViewType::ctype                                   MacroDomainFieldType;
+  typedef typename MacroGridViewType::template Codim<0>::Entity               MacroEntityType;
+  typedef double                                                              RangeFieldType;
+  static const size_t       dimDomain = MacroGridViewType::dimension;
+  static const size_t       dimRange = dimDomain;
+  static const unsigned int polOrder = polynomialOrder;
+
+  typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename MacroGridViewType::Intersection >                            BoundaryInfoType;
+  typedef Dune::Stuff::Functions::Constant< MacroEntityType, MacroDomainFieldType, dimDomain, double, 1 >                 MacroConstFct;
+  typedef Dune::Stuff::LocalizableFunctionInterface< MacroEntityType, MacroDomainFieldType, dimDomain, double, 1 >        MacroScalarFct;
+  typedef Dune::Stuff::LocalizableFunctionInterface< MacroEntityType, MacroDomainFieldType, dimDomain, double, dimRange > MacroVectorFct;
+  typedef std::function< bool(const MacroGridViewType&, const MacroEntityType&) >                                         MacroFilterType;
+
+  typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType                 RealMatrixType;
+  typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType                 RealVectorType;
+  typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType MatrixType;
+  typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType VectorType;
+
+  typedef Dune::GDT::Spaces::Nedelec::PdelabBased< MacroGridViewType, polOrder, double, dimRange > SpaceType;
+  typedef Dune::GDT::DiscreteFunction< SpaceType, RealVectorType >                                 DiscreteFunctionType;
+
+  typedef Dune::GDT::Operators::CurlCellReconstruction< SpaceType, CellGridType >                       CurlCellProblem;
+  typedef Dune::GDT::Operators::IdCellReconstruction< SpaceType, CellGridType >                         IdCellProblem;
+  typedef Dune::GDT::MaxwellInclusionCell< InclusionGridViewType >                                      InclusionCellProblem;
+  typedef typename CurlCellProblem::PeriodicEntityType                                                  CellEntityType;
+  typedef typename CurlCellProblem::DomainFieldType                                                     CellDomainFieldType;
+  typedef typename CurlCellProblem::ScalarFct                                                           CellScalarFct;
+  typedef typename CurlCellProblem::FilterType                                                          CellFilterType;
+  typedef Dune::Stuff::Functions::Constant< CellEntityType, CellDomainFieldType, dimDomain, double, 1 > CellConstFct;
+  typedef typename InclusionCellProblem::ConstantFct                                                    InclusionConstantFct;
+
+  typedef Dune::GDT::DiscreteFunction< typename CurlCellProblem::CellSpaceType, RealVectorType >          CurlCellDiscreteFctType;
+  typedef Dune::GDT::DiscreteFunction< typename IdCellProblem::CellSpaceType, RealVectorType >            IdCellDiscreteFctType;
+  typedef Dune::GDT::DiscreteFunction< typename InclusionCellProblem::SpaceType, RealVectorType >         InclusionCellDiscreteFctType;
+
+  typedef typename CurlCellProblem::CellSolutionStorageType       AllCurlSolutionsStorageType;
+  typedef typename IdCellProblem::CellSolutionStorageType         AllIdSolutionsStorageType;
+  typedef typename InclusionCellProblem::CellSolutionStorageType  AllInclusionSolutionsStorageType;
+
+  HMMHelmholtzDiscretization(const MacroGridViewType& macrogridview,
+                             CellGridType& cellgrid,
+                             const InclusionGridViewType& inclusion_gridview,
+                             const BoundaryInfoType& info,
+                             const CellScalarFct& mu_diel,
+                             const CellScalarFct& mu_incl_real,
+                             const CellScalarFct& mu_incl_imag,
+                             const double& wavenumber,
+                             const MacroVectorFct& bdry_real,
+                             const MacroVectorFct& bdry_imag,
+                             MacroFilterType filter_scatterer,
+                             MacroFilterType filter_outside,
+                             CellFilterType filter_inclusion,
+                             const CellScalarFct& divparam,
+                             const CellScalarFct& stabil,
+                             const MacroScalarFct& mu_diel_macro,
+                             const MacroScalarFct& mu_incl_real_macro,
+                             const MacroScalarFct& mu_incl_imag_macro)
+    : coarse_space_(macrogridview)
+    , bdry_info_(info)
+    , macro_mu_diel_(mu_diel_macro)
+    , macro_mu_incl_real_(mu_incl_real_macro)
+    , macro_mu_incl_imag_(mu_incl_imag_macro)
+    , bdry_real_(bdry_real)
+    , bdry_imag_(bdry_imag)
+    , periodic_mu_diel_(mu_diel)
+    , periodic_mu_incl_real_(mu_incl_real)
+    , periodic_mu_incl_imag_(mu_incl_imag)
+    , div_param_(divparam)
+    , stabil_param_(stabil)
+    , wavenumber_(wavenumber)
+    , k_squared_(wavenumber_ * wavenumber_)
+    , k_squared_neg_(-1*wavenumber_*wavenumber_)
+    , filter_scatterer_(filter_scatterer)
+    , filter_outside_(filter_outside)
+    , filter_inclusion_(filter_inclusion)
+    , curl_cell_(coarse_space_, cellgrid, periodic_mu_diel_, div_param_, stabil_param_, filter_inclusion_)
+    , id_cell_(coarse_space_, cellgrid, k_squared, stabil_param_, filter_inclusion)
+    , inclusion_cell_(inclusion_gridview, periodic_mu_incl_real_, periodic_mu_incl_imag_, k_squared_neg_)
+    , is_assembled_(false)
+    , system_matrix_real_(0,0)
+    , system_matrix_imag_(0,0)
+    , system_matrix_(0,0)
+    , rhs_vector_real_(0)
+    , rhs_vector_imag_(0)
+    , rhs_vector_(0)
+  {}
+
+  const SpaceType& space() const
+  {
+    return coarse_space_;
+  }
+
+  const typename CurlCellProblem::CellSpaceType& curl_cell_space() const
+  {
+    return curl_cell_.cell_space();
+  }
+
+  const typename IdCellProblem::CellSpaceType& id_cell_space() const
+  {
+    return id_cell_.cell_space();
+  }
+
+  const typename InclusionCellProblem::SpaceType& inclusion_cell_space() const
+  {
+    return inclusion_cell_.cell_space();
+  }
+
+
+  void assemble() const
+  {
+    using namespace Dune;
+    using namespace Dune::GDT;
+    if(!is_assembled_) {
+      //prepare
+      Stuff::LA::SparsityPatternDefault sparsity_pattern = coarse_space_.compute_volume_pattern();
+      system_matrix_real_ = RealMatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size(), sparsity_pattern);
+      system_matrix_imag_ = RealMatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size(), sparsity_pattern);
+      system_matrix_ = MatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size());
+      rhs_vector_real_ = RealVectorType(coarse_space_.mapper().size());
+      rhs_vector_imag_ = RealVectorType(coarse_space_.mapper().size());
+      rhs_vector_ = VectorType(coarse_space_.mapper().size());
+      SystemAssembler< SpaceType > walker(coarse_space_);
+
+      //rhs
+      typedef LocalFunctional::Codim1Integral< LocalEvaluation::ProductTangential < MacroVectorFct > > LocalFunctionalType;
+      LocalFunctionalType bdry_fctnal_real(bdry_real_);
+      LocalFunctionalType bdry_fctnal_imag(bdry_imag_);
+      const LocalAssembler::Codim1Vector< LocalFunctionalType > bdry_vector_real(bdry_fctnal_real);
+      const LocalAssembler::Codim1Vector< LocalFunctionalType > bdry_vector_imag(bdry_fctnal_imag);
+      grid_walker.add(bdry_vector_real, rhs_vector_real_, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
+      grid_walker.add(bdry_vector_imag, rhs_vector_imag_, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
+
+
+      //solve cell problems
+      AllCurlSolutionsStorageType curl_cell_solutions(dimDomain);
+      for (auto& it : curl_cell_solutions) {
+        std::vector<DiscreteFunction< typename CurlCellProblem::CellSpaceType, RealVectorType > >
+                  it1(1, DiscreteFunction< typename CurlCellProblem::CellSpaceType, RealVectorType >(curl_cell_.cell_space()));
+        it = DSC::make_unique< typename EllipticCellProblem::CellDiscreteFunctionType >(it1);
+      }
+      std::cout<< "computing curl cell problems"<< std::endl;
+      curl_cell_.compute_cell_solutions(curl_cell_solutions);
+      AllIdSolutionsStorageType id_cell_solutions(dimDomain);
+      for (auto& it : id_cell_solutions) {
+        std::vector<DiscreteFunction< typename IdCellProblem::CellSpaceType, RealVectorType > >
+                  it1(1, DiscreteFunction< typename IdellProblem::CellSpaceType, RealVectorType >(id_cell_.cell_space()));
+        it = DSC::make_unique< typename IdCellProblem::CellDiscreteFunctionType >(it1);
+      }
+      std::cout<< "computing id cell problems"<< std::endl;
+      id_cell_.compute_cell_solutions(id_cell_solutions);
+      AllInclusionSolutionsStorageType inclusion_cell_solutions(dimDomain);
+      for (auto& it : inclusion_cell_solutions) {
+        std::vector<DiscreteFunction< typename InclusionCellProblem::SpaceType, RealVectorType > >
+                  it1(2, DiscreteFunction< typename InclusionCellProblem::SpaceType, RealVectorType >(inclusion_cell_.cell_space()));
+        it = DSC::make_unique< typename InclusionCellProblem::CellDiscreteFunctionType >(it1);
+      }
+      std::cout<< "computing inclusion cell problems"<< std::endl;
+      inclusion_cell_.compute_cell_solutions(inclusion_cell_solutions);
+
+      //lhs in scatterer
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMCurlcurlPeriodic< CellScalarFct, CurlCellProblem > > HMMCurlOperator;
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMMaxwellIdPeriodic< CellScalarFct, IdCellProblem, InclusionCellProblem > > HMMIdOperator;
+      HMMCurlOperator hmmcurl(curl_cell_, periodic_mu_diel_, div_param_, macro_mu_diel_, curl_cell_solutions, filter_inclusion_);
+      HMMIdOperator hmmid_real(id_cell_, inclusion_cell_, periodic_mu_incl_real_, periodic_mu_incl_imag_, wavenumber_, true, macro_mu_incl_real_, macro_mu_incl_imag_, id_cell_solutions,
+                               inclusion_cell_solutions, filter_inclusion_);
+      HMMIdOperator hmmid_imag(id_cell_, inclusion_cell_, periodic_mu_incl_real_, periodic_mu_incl_imag_, wavenumber_, false, macro_mu_incl_real_, macro_mu_incl_imag_, id_cell_solutions, 
+                               inclusion_cell_solutions, filter_inclusion);
+      LocalAssembler::Codim0Matrix< HMMCurlOperator > hmm_curl_assembler(hmmcurl);
+      LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_real_assembler(hmmid_real);
+      LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_imag_assembler(hmmid_imag);
+      assert(filter_scatterer_);
+      walker.add(hmm_curl_assembler, system_matrix_real_, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
+      walker.add(hmm_id_real_assembler, system_matrix_real_, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
+      walker.add(hmm_id_imag_assembler, system_matrix_imag_, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
+
+      //lhs outside scatterer
+      MacroConstFct one(1.0);
+      //std::cout<< "watch out: diffusion_param outside scatterer is not 1.0!!!!"<<std::endl;
+      assert(filter_outside_);
+      typedef GDT::Operators::CurlCurl< MacroConstFct, RealMatrixType, SpaceType > CurlOperatorType;
+      CurlOperatorType curl_operator_real(one, system_matrix_real_, coarse_space_);
+      walker.add(curl_operator_real, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_outside_));
+      //identity part
+      MacroConstFct wavenumber_fct(-1.0*wavenumber_);
+      MacroConstFct wavenumber_fct_squared(-1.0*wavenumber_ * wavenumber_);
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< MacroConstFct > > IdOperatorType;
+      const IdOperatorType identity_operator_real(wavenumber_fct_squared);
+      const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler_real(identity_operator_real);
+      walker.add(idMatrixAssembler_real, system_matrix_real_, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_outside_));
+
+      //boundary part for complex Robin-type condition
+      typedef LocalOperator::Codim1BoundaryIntegral< LocalEvaluation::ProductTangential< MacroConstFct > > BdryOperatorType;
+      const BdryOperatorType bdry_operator(wavenumber_fct);
+      const LocalAssembler::Codim1BoundaryMatrix< BdryOperatorType > bdry_assembler(bdry_operator);
+      walker.add(bdry_assembler, system_matrix_imag_, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
+
+      //assemble
+      std::cout<< "macro assembly" <<std::endl;
+      walker.assemble();
+
+      //assembly of total (complex) matrix and vector
+      std::complex< double > im(0.0, 1.0);
+      system_matrix_.backend() = system_matrix_imag_.backend().template cast< std::complex< double > >();
+      system_matrix_.scal(im);
+      system_matrix_.backend() += system_matrix_real_.backend().template cast< std::complex< double > >();
+      rhs_vector_.backend() = rhs_vector_imag_.backend().template cast< std::complex< double > >();
+      rhs_vector_.scal(im);
+      rhs_vector_.backend() += rhs_vector_real_.backend().template cast< std::complex< double > > ();
+
+      is_assembled_ = true;
+    }
+  }  //assemble
+
+  bool assembled() const
+  {
+    return is_assembled_;
+  }
+
+  Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > effective_curl() const
+  {
+    return curl_cell_.effective_matrix();
+  }
+
+  std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > effective_id() const
+  {
+    auto inclusion_matrix = inclusion_cell_.effective_matrix();
+    auto real_matrix = id_cell_.effective_matrix() + inclusion_matrix[0];
+    return std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > >({real_matrix, inclusion_matrix[1]});
+  }
+
+  const MatrixType& system_matrix() const
+  {
+    return system_matrix_;
+  }
+
+  const VectorType& rhs_vector() const
+  {
+    return rhs_vector_;
+  }
+
+  void solve(VectorType& solution) const
+  {
+    if (!is_assembled_)
+      assemble();
+    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
+    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+  }
+
+  /**
+   * @brief solve_and_correct solves the HMM problem and directly computes the (discrete) correctors
+   * @param macro_solution a vector (2 items, first for real, second for imaginary part) of DiscreteFunction (the space has to be given),
+   *  where the macro_solution of the HMM will be saved to
+   * @return a pair of PeriodicCorrector objects for the curl and identity corrector function
+   */
+/*  std::pair< Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllipticCellDiscreteFctType >, Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType > >
+    solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution)
+  {
+    if (!is_assembled_)
+      assemble();
+    VectorType solution(coarse_space_.mapper().size());
+    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
+    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+    //get real and imaginary part and make discrete functions
+    RealVectorType solution_real(coarse_space_.mapper().size());
+    RealVectorType solution_imag(coarse_space_.mapper().size());
+    solution_real.backend() = solution.backend().real();
+    solution_imag.backend() = solution.backend().imag();
+    assert(macro_solution.size() > 1);
+    macro_solution[0].vector() = solution_real;
+    macro_solution[1].vector() = solution_imag;
+    //compute cell problems
+    AllEllipticSolutionsStorageType elliptic_cell_solutions(dimDomain);
+    for (auto& it : elliptic_cell_solutions) {
+      std::vector< EllipticCellDiscreteFctType >it1(1, EllipticCellDiscreteFctType(elliptic_cell_.cell_space()));
+      it = DSC::make_unique< typename EllipticCellProblem::CellDiscreteFunctionType >(it1);
+    }
+    std::cout<< "computing elliptic cell problems"<< std::endl;
+    elliptic_cell_.compute_cell_solutions(elliptic_cell_solutions);
+    AllInclusionSolutionsStorageType inclusion_cell_solutions(1);
+    for (auto& it : inclusion_cell_solutions) {
+      std::vector< InclusionCellDiscreteFctType>it1(2, InclusionCellDiscreteFctType(inclusion_cell_.cell_space()));
+      it = DSC::make_unique< typename InclusionCellProblem::CellDiscreteFunctionType >(it1);
+    }
+    std::cout<< "computing inclusion cell problems"<< std::endl;
+    inclusion_cell_.compute_cell_solutions(inclusion_cell_solutions);
+
+    std::vector< std::vector< EllipticCellDiscreteFctType > > elliptic_cell_functions(dimDomain,
+                                                                                      std::vector< EllipticCellDiscreteFctType >(1, EllipticCellDiscreteFctType(elliptic_cell_.cell_space())));
+    std::vector< std::vector< InclusionCellDiscreteFctType > > incl_cell_functions(1,
+                                                                                   std::vector< InclusionCellDiscreteFctType >(2, InclusionCellDiscreteFctType(inclusion_cell_.cell_space())));
+    for (size_t ii = 0; ii < dimDomain; ++ii){
+      elliptic_cell_functions[ii][0].vector() = elliptic_cell_solutions[ii]->operator[](0).vector();
+    }
+    incl_cell_functions[0][0].vector() = inclusion_cell_solutions[0]->operator[](0).vector();
+    incl_cell_functions[0][1].vector() = inclusion_cell_solutions[0]->operator[](1).vector();
+    //build correctors
+    return std::make_pair(Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllipticCellDiscreteFctType >(macro_solution, elliptic_cell_functions, "elliptic"),
+                          Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType >(macro_solution, incl_cell_functions, "id_incl"));
+  } //solve and correct
+*/
+  /** \brief computes the error between a reference solution (to the heterogeneous problem, on a fine grid) to the HMM approximation
+   *
+   * the HMM approximation is turned into a \ref DeltaCorrectorHelmholtz and the L2 or H1 seminorms can be requested
+   * \tparam ReferenceFunctionImp Type for the discrete reference solution
+   * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM approximation
+   * \tparam EllipticCellFunctionImp Type for the solutions to the cell problem for the gradient
+   * \tparam InclusionCellFunctionImp Type for the solutions to the cell problem for the identity part in the inclusions
+   */
+/*  template< class ReferenceFunctionImp, class CoarseFunctionImp, class EllipticCellFunctionImp, class InclusionCellFunctionImp >
+  RangeFieldType reference_error(std::vector< ReferenceFunctionImp >& reference_sol,
+                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, EllipticCellFunctionImp >& elliptic_corrector,
+                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, InclusionCellFunctionImp >& inclusion_corrector,
+                                 double delta, std::string type)
+  {
+    //build DeltaCorrectorHelmholtz
+    typedef Dune::GDT::DeltaCorrectorHelmholtz< CoarseFunctionImp, EllipticCellFunctionImp, InclusionCellFunctionImp > DeltaCorrectorType;
+    DeltaCorrectorType corrector_real(elliptic_corrector.macro_function(), elliptic_corrector.cell_solutions(), inclusion_corrector.cell_solutions(),
+                                      filter_scatterer_, filter_inclusion_, wavenumber_, delta, "real");
+    DeltaCorrectorType corrector_imag(elliptic_corrector.macro_function(), elliptic_corrector.cell_solutions(), inclusion_corrector.cell_solutions(),
+                                      filter_scatterer_, filter_inclusion_, wavenumber_, delta, "imag");
+    //build errors
+    typedef Dune::Stuff::Functions::Difference< ReferenceFunctionImp, DeltaCorrectorType > DifferenceFunctionType;
+    DifferenceFunctionType error_real(reference_sol[0], corrector_real);
+    DifferenceFunctionType error_imag(reference_sol[1], corrector_imag);
+    //compute errors depending on type
+    RangeFieldType result = 0;
+    if(type == "l2") {  //maybe weigh it with k^2
+      Dune::GDT::Products::L2< typename ReferenceFunctionImp::SpaceType::GridViewType > l2_product(reference_sol[0].space().grid_view());
+      result += l2_product.apply2(error_real, error_real);
+      result += l2_product.apply2(error_imag, error_imag);
+      return std::sqrt(result);
+    }
+    else if(type == "h1semi") {
+      Dune::GDT::Products::H1Semi< typename ReferenceFunctionImp::SpaceType::GridViewType > h1_product(reference_sol[0].space().grid_view());
+      result += h1_product.apply2(error_real, error_real);
+      result += h1_product.apply2(error_imag, error_imag);
+      return std::sqrt(result);
+    }
+    else
+      DUNE_THROW(Dune::NotImplemented, "This type of norm is not implemented");
+  } //reference error
+*/
+private:
+  const SpaceType                     coarse_space_;
+  const BoundaryInfoType&             bdry_info_;
+  const MacroScalarFct&               macro_mu_diel_;
+  const MacroScalarFct&               macro_mu_incl_real_;
+  const MacroScalarFct&               macro_mu_incl_imag_;
+  const MacroScalarFct&               bdry_real_;
+  const MacroScalarFct&               bdry_imag_;
+  const CellScalarFct&                periodic_mu_diel_;
+  const CellScalarFct&                periodic_mu_incl_real_;
+  const CellScalarFct&                periodic_mu_incl_imag_;
+  const CellScalarFct&                div_param_;
+  const CellScalarFct&                stabil_param_;
+  const double                        wavenumber_;
+  CellConstantFct                     k_squared_;
+  InclusionConstantFct                k_squared_neg_;
+  const MacroFilterType               filter_scatterer_;
+  const MacroFilterType               filter_outside_;
+  const CellFilterType                filter_inclusion_;
+  const CurlCellProblem               curl_cell_;
+  const IdCellProblem                 id_cell_;
+  const InclusionCellProblem          inclusion_cell_;
+  mutable bool                        is_assembled_;
+  mutable RealMatrixType              system_matrix_real_;
+  mutable RealMatrixType              system_matrix_imag_;
+  mutable MatrixType                  system_matrix_;
+  mutable RealVectorType              rhs_vector_real_;
+  mutable RealVectorType              rhs_vector_imag_;
+  mutable VectorType                  rhs_vector_;
+}; //class HMMHelmholtzDiscretization
 
 #endif // DUNE_GDT_TEST_HMM_MAXWELL_HH
