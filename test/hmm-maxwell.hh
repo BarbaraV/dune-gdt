@@ -39,11 +39,10 @@
 #include <dune/gdt/discretefunction/default.hh>
 #include <dune/gdt/localevaluation/hmm.hh>
 #include <dune/gdt/localevaluation/product.hh>
-#include <dune/gdt/localevaluation/product-l2deriv.hh>
-#include <dune/gdt/localevaluation/curlcurl.hh>
 #include <dune/gdt/localoperator/codim0.hh>
 #include <dune/gdt/localoperator/codim1.hh>
 #include <dune/gdt/operators/cellreconstruction.hh>
+#include <dune/gdt/operators/curlcurl.hh>
 #include <dune/gdt/assembler/local/codim0.hh>
 #include <dune/gdt/assembler/local/codim1.hh>
 #include <dune/gdt/assembler/system.hh>
@@ -584,24 +583,24 @@ public:
   typedef typename IdCellProblem::CellSolutionStorageType         AllIdSolutionsStorageType;
   typedef typename InclusionCellProblem::CellSolutionStorageType  AllInclusionSolutionsStorageType;
 
-  HMMHelmholtzDiscretization(const MacroGridViewType& macrogridview,
-                             CellGridType& cellgrid,
-                             const InclusionGridViewType& inclusion_gridview,
-                             const BoundaryInfoType& info,
-                             const CellScalarFct& mu_diel,
-                             const CellScalarFct& mu_incl_real,
-                             const CellScalarFct& mu_incl_imag,
-                             const double& wavenumber,
-                             const MacroVectorFct& bdry_real,
-                             const MacroVectorFct& bdry_imag,
-                             MacroFilterType filter_scatterer,
-                             MacroFilterType filter_outside,
-                             CellFilterType filter_inclusion,
-                             const CellScalarFct& divparam,
-                             const CellScalarFct& stabil,
-                             const MacroScalarFct& mu_diel_macro,
-                             const MacroScalarFct& mu_incl_real_macro,
-                             const MacroScalarFct& mu_incl_imag_macro)
+  HMMMaxwellDiscretization(const MacroGridViewType& macrogridview,
+                           CellGridType& cellgrid,
+                           const InclusionGridViewType& inclusion_gridview,
+                           const BoundaryInfoType& info,
+                           const CellScalarFct& mu_diel,
+                           const CellScalarFct& mu_incl_real,
+                           const CellScalarFct& mu_incl_imag,
+                           const double& wavenumber,
+                           const MacroVectorFct& bdry_real,
+                           const MacroVectorFct& bdry_imag,
+                           MacroFilterType filter_scatterer,
+                           MacroFilterType filter_outside,
+                           CellFilterType filter_inclusion,
+                           const CellScalarFct& divparam,
+                           const CellScalarFct& stabil,
+                           const MacroScalarFct& mu_diel_macro,
+                           const MacroScalarFct& mu_incl_real_macro,
+                           const MacroScalarFct& mu_incl_imag_macro)
     : coarse_space_(macrogridview)
     , bdry_info_(info)
     , macro_mu_diel_(mu_diel_macro)
@@ -621,7 +620,7 @@ public:
     , filter_outside_(filter_outside)
     , filter_inclusion_(filter_inclusion)
     , curl_cell_(coarse_space_, cellgrid, periodic_mu_diel_, div_param_, stabil_param_, filter_inclusion_)
-    , id_cell_(coarse_space_, cellgrid, k_squared, stabil_param_, filter_inclusion)
+    , id_cell_(coarse_space_, cellgrid, k_squared_, stabil_param_, filter_inclusion_)
     , inclusion_cell_(inclusion_gridview, periodic_mu_incl_real_, periodic_mu_incl_imag_, k_squared_neg_)
     , is_assembled_(false)
     , system_matrix_real_(0,0)
@@ -674,8 +673,8 @@ public:
       LocalFunctionalType bdry_fctnal_imag(bdry_imag_);
       const LocalAssembler::Codim1Vector< LocalFunctionalType > bdry_vector_real(bdry_fctnal_real);
       const LocalAssembler::Codim1Vector< LocalFunctionalType > bdry_vector_imag(bdry_fctnal_imag);
-      grid_walker.add(bdry_vector_real, rhs_vector_real_, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
-      grid_walker.add(bdry_vector_imag, rhs_vector_imag_, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
+      walker.add(bdry_vector_real, rhs_vector_real_, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
+      walker.add(bdry_vector_imag, rhs_vector_imag_, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
 
 
       //solve cell problems
@@ -683,14 +682,14 @@ public:
       for (auto& it : curl_cell_solutions) {
         std::vector<DiscreteFunction< typename CurlCellProblem::CellSpaceType, RealVectorType > >
                   it1(1, DiscreteFunction< typename CurlCellProblem::CellSpaceType, RealVectorType >(curl_cell_.cell_space()));
-        it = DSC::make_unique< typename EllipticCellProblem::CellDiscreteFunctionType >(it1);
+        it = DSC::make_unique< typename CurlCellProblem::CellDiscreteFunctionType >(it1);
       }
       std::cout<< "computing curl cell problems"<< std::endl;
       curl_cell_.compute_cell_solutions(curl_cell_solutions);
       AllIdSolutionsStorageType id_cell_solutions(dimDomain);
       for (auto& it : id_cell_solutions) {
         std::vector<DiscreteFunction< typename IdCellProblem::CellSpaceType, RealVectorType > >
-                  it1(1, DiscreteFunction< typename IdellProblem::CellSpaceType, RealVectorType >(id_cell_.cell_space()));
+                  it1(1, DiscreteFunction< typename IdCellProblem::CellSpaceType, RealVectorType >(id_cell_.cell_space()));
         it = DSC::make_unique< typename IdCellProblem::CellDiscreteFunctionType >(it1);
       }
       std::cout<< "computing id cell problems"<< std::endl;
@@ -711,7 +710,7 @@ public:
       HMMIdOperator hmmid_real(id_cell_, inclusion_cell_, periodic_mu_incl_real_, periodic_mu_incl_imag_, wavenumber_, true, macro_mu_incl_real_, macro_mu_incl_imag_, id_cell_solutions,
                                inclusion_cell_solutions, filter_inclusion_);
       HMMIdOperator hmmid_imag(id_cell_, inclusion_cell_, periodic_mu_incl_real_, periodic_mu_incl_imag_, wavenumber_, false, macro_mu_incl_real_, macro_mu_incl_imag_, id_cell_solutions, 
-                               inclusion_cell_solutions, filter_inclusion);
+                               inclusion_cell_solutions, filter_inclusion_);
       LocalAssembler::Codim0Matrix< HMMCurlOperator > hmm_curl_assembler(hmmcurl);
       LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_real_assembler(hmmid_real);
       LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_imag_assembler(hmmid_imag);
@@ -768,7 +767,7 @@ public:
     return curl_cell_.effective_matrix();
   }
 
-  std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > effective_id() const
+  std::vector< Dune::FieldMatrix< RangeFieldType, dimDomain, dimDomain > > effective_id() const
   {
     auto inclusion_matrix = inclusion_cell_.effective_matrix();
     auto real_matrix = id_cell_.effective_matrix() + inclusion_matrix[0];
@@ -893,15 +892,15 @@ private:
   const MacroScalarFct&               macro_mu_diel_;
   const MacroScalarFct&               macro_mu_incl_real_;
   const MacroScalarFct&               macro_mu_incl_imag_;
-  const MacroScalarFct&               bdry_real_;
-  const MacroScalarFct&               bdry_imag_;
+  const MacroVectorFct&               bdry_real_;
+  const MacroVectorFct&               bdry_imag_;
   const CellScalarFct&                periodic_mu_diel_;
   const CellScalarFct&                periodic_mu_incl_real_;
   const CellScalarFct&                periodic_mu_incl_imag_;
   const CellScalarFct&                div_param_;
   const CellScalarFct&                stabil_param_;
   const double                        wavenumber_;
-  CellConstantFct                     k_squared_;
+  CellConstFct                        k_squared_;
   InclusionConstantFct                k_squared_neg_;
   const MacroFilterType               filter_scatterer_;
   const MacroFilterType               filter_outside_;

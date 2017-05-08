@@ -1442,6 +1442,8 @@ public:
     typedef typename Stuff::LocalfunctionSetInterface
         < EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >::JacobianRangeType JacobianRangeType;
     typedef typename Stuff::LocalfunctionSetInterface
+        < EntityType, DomainFieldType, dimDomain, R, 1, 1 >::JacobianRangeType         ScalarJacobianRangeType;
+    typedef typename Stuff::LocalfunctionSetInterface
         < EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >::RangeType         RangeType;
     typedef typename Stuff::LocalfunctionSetInterface
         < EntityType, DomainFieldType, dimDomain, R, dimDomain, 1 >::RangeFieldType    RangeFieldType;
@@ -1485,7 +1487,7 @@ public:
             inclusion_solutions_.size(), std::vector<RangeType>(volumeQuadrature.size(), RangeType(0.0)));
       std::vector<std::vector<JacobianRangeType>> allLocalSolutionJacobs_real(
             inclusion_solutions_.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
-      std::vector<std::vector<RangeType>> allLocalSolutionJacobs_imag(
+      std::vector<std::vector<JacobianRangeType>> allLocalSolutionJacobs_imag(
             inclusion_solutions_.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
       for (auto lsNum : DSC::valueRange(inclusion_solutions_.size())) {
         const auto localFunction_real = inclusion_solutions_[lsNum]->operator[](0).local_function(entity);
@@ -1599,8 +1601,8 @@ public:
         const size_t integrand_order = 2 * (cell_solutions_[0]->operator[](0).local_function(entity)->order() - 1);
         const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(integrand_order));
         // evaluate the jacobians of all local solutions in all quadrature points
-        std::vector<std::vector<JacobianRangeType>> allLocalSolutionEvaluations_real(
-            cell_solutions_.size(), std::vector<JacobianRangeType>(volumeQuadrature.size(), JacobianRangeType(0.0)));
+        std::vector<std::vector<ScalarJacobianRangeType>> allLocalSolutionEvaluations_real(
+            cell_solutions_.size(), std::vector<ScalarJacobianRangeType>(volumeQuadrature.size(), ScalarJacobianRangeType(0.0)));
         for (auto lsNum : DSC::valueRange(cell_solutions_.size())) {
           const auto localFunction_real = cell_solutions_[lsNum]->operator[](0).local_function(entity);
           localFunction_real->jacobian(volumeQuadrature, allLocalSolutionEvaluations_real[lsNum]);
