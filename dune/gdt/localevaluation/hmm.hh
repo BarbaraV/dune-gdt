@@ -370,6 +370,7 @@ class HMMCurlcurlPeriodic
 public:
   typedef HMMCurlcurl< FunctionImp, CellProblemType > BaseType;
   using typename BaseType::FunctionType;
+  using typename BaseType::LocalfunctionTupleType;
   using typename BaseType::EntityType;
   using typename BaseType::DomainFieldType;
   using BaseType::dimDomain;
@@ -401,6 +402,24 @@ public:
     : BaseType(cell_problem, periodic_mu, periodic_divparam, macro_mu)
     , cell_solutions_(cell_solutions)
   {}
+
+  /// \name Required by LocalEvaluation::Codim0Interface< ..., 2 >
+  /// \{
+
+    /**
+   * \brief extracts the local functions and calls the correct evaluate() method
+   */
+  template< class R, size_t rT, size_t rCT, size_t rA, size_t rCA >
+  void evaluate(const LocalfunctionTupleType& localFuncs,
+                const Stuff::LocalfunctionSetInterface
+                    < EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+                const Stuff::LocalfunctionSetInterface
+                    < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    evaluate(*std::get< 0 >(localFuncs), testBase, ansatzBase, localPoint, ret);
+  }
 
   /// \}
   /// \name Actual implementation of evaluate
@@ -485,8 +504,8 @@ public:
             auto& retRow = ret[ii];
             for (size_t jj = 0; jj < cols; ++jj) {
               auto tmp_result = (macro_function_value * local_mu->evaluate(x));
-              auto allCellCorrecJacobii = allLocalSolutionEvaluations[ii][kk];
-              auto allCellCorrecJacobjj = allLocalSolutionEvaluations[jj][kk];
+              auto allCellCorrecJacobii = allLocalSolutionEvaluations[0][kk];
+              auto allCellCorrecJacobjj = allLocalSolutionEvaluations[0][kk];
               allCellCorrecJacobii *= 0.;
               allCellCorrecJacobjj *= 0.;
               for (size_t ll = 0; ll < dimDomain; ++ll){
@@ -498,7 +517,7 @@ public:
                               + (ansatzcurl[jj][1] + allCellCorrecJacobjj[0][2] - allCellCorrecJacobjj[2][0])
                                 * (testcurl[ii][1] + allCellCorrecJacobii[0][2] - allCellCorrecJacobii[2][0])
                               + (ansatzcurl[jj][2] + allCellCorrecJacobjj[1][0] - allCellCorrecJacobjj[0][1])
-                                * (testcurl[ii][2] + allLocalSolutionEvaluations[ii][kk][1][0] - allLocalSolutionEvaluations[ii][kk][0][1]));
+                                * (testcurl[ii][2] + allCellCorrecJacobii[1][0] - allCellCorrecJacobii[0][1]));
               tmp_result += local_divparam->evaluate(x) * (allCellCorrecJacobjj[0][0] * allCellCorrecJacobii[0][0]
                                                            + allCellCorrecJacobjj[1][1] * allCellCorrecJacobii[1][1]
                                                            + allCellCorrecJacobjj[2][2] * allCellCorrecJacobjj[2][2]);
@@ -750,6 +769,7 @@ class HMMIdentityPeriodic
 public:
   typedef HMMIdentity< FunctionImp, CellProblemType > BaseType;
   using typename BaseType::FunctionType;
+  using typename BaseType::LocalfunctionTupleType;
   using typename BaseType::EntityType;
   using typename BaseType::DomainFieldType;
   using BaseType::dimDomain;
@@ -771,6 +791,21 @@ public:
     : BaseType(cell_problem, periodic_kappa_real, periodic_kappa_imag, real_part, macro_kappa_real, macro_kappa_imag)
     , cell_solutions_(cell_solutions)
   {}
+
+  /**
+   * \brief extracts the local functions and calls the correct evaluate() method
+   */
+  template< class R, size_t rT, size_t rCT, size_t rA, size_t rCA >
+  void evaluate(const LocalfunctionTupleType& localFuncs,
+                const Stuff::LocalfunctionSetInterface
+                    < EntityType, DomainFieldType, dimDomain, R, rT, rCT >& testBase,
+                const Stuff::LocalfunctionSetInterface
+                    < EntityType, DomainFieldType, dimDomain, R, rA, rCA >& ansatzBase,
+                const Dune::FieldVector< DomainFieldType, dimDomain >& localPoint,
+                Dune::DynamicMatrix< R >& ret) const
+  {
+    evaluate(*std::get< 0 >(localFuncs), *std::get< 1 >(localFuncs), testBase, ansatzBase, localPoint, ret);
+  }
 
   /// \}
   /// \name Actual implementation of evaluate
@@ -1528,8 +1563,8 @@ public:
             correcii_value_imag *= ksquared;
             correcjj_value_real *= ksquared;
             correcjj_value_imag *= ksquared;
-            auto correcii_jacob_real = allLocalSolutionJacobs_real[ii][kk];
-            auto correcjj_jacob_real = allLocalSolutionJacobs_real[jj][kk];
+            auto correcii_jacob_real = allLocalSolutionJacobs_real[0][kk];
+            auto correcjj_jacob_real = allLocalSolutionJacobs_real[0][kk];
             correcii_jacob_real *= 0;
             auto correcii_jacob_imag = correcii_jacob_real;
             correcjj_jacob_real *= 0;
@@ -1620,8 +1655,8 @@ public:
           for (size_t ii = 0; ii<rows; ++ii) {
             auto& retRow = ret[ii];
             for (size_t jj = 0; jj< cols; ++jj) {
-              auto reconii_real = allLocalSolutionEvaluations_real[ii][kk][0];
-              auto reconjj_real = allLocalSolutionEvaluations_real[jj][kk][0];
+              auto reconii_real = allLocalSolutionEvaluations_real[0][kk][0];
+              auto reconjj_real = allLocalSolutionEvaluations_real[0][kk][0];
               reconii_real *= 0;
               reconjj_real *= 0;
               for (size_t ll = 0; ll< dimDomain; ++ll){
