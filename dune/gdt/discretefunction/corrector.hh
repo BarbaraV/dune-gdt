@@ -549,8 +549,10 @@ public:
       ret += macro_total[0];
     else if (part_ == "imag")
       ret += macro_total[1];
+    else if (part_ == "abs")
+      ret += std::sqrt(macro_total[0]*macro_total[0] + macro_total[1]*macro_total[1]);
     else
-      DUNE_THROW(Dune::NotImplemented, "You can only compute real or imag part");
+      DUNE_THROW(Dune::NotImplemented, "You can only compute real or imag part or absolute value");
     if (inside_scatterer) {
       //preparation for fine part
       DomainType yy(xx);
@@ -591,6 +593,13 @@ public:
           ret += wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0]; //imag*real
           if (inclusion_cell_solutions_[0].size() > 1)
             ret += wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][1]; //real*imag
+        }
+        else if (part_ == "abs") {
+          ret += std::sqrt(std::pow(wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0], 2)
+                           + std::pow(wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0], 2));
+          if (inclusion_cell_solutions_[0].size() > 1)
+            ret += std::sqrt(std::pow(wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][0]-wavenumber_ * wavenumber_ *macro_total[1] * incl_cell_evaluation[0][1], 2)
+                             + std::pow(wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0]+wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][1], 2)); 
         }
       }
     } //inside scatterer
