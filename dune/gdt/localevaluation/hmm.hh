@@ -1553,16 +1553,6 @@ public:
             auto correcii_value_imag = correcii_value_real;
             correcjj_value_real *= 0;
             auto correcjj_value_imag = correcjj_value_real;
-            for (size_t ll = 0; ll< dimDomain; ++ll){
-              correcii_value_real.axpy(tValue[ii][ll], allLocalSolutionEvaluations_real[ll][kk]);
-              correcii_value_imag.axpy(tValue[ii][ll], allLocalSolutionEvaluations_imag[ll][kk]);
-              correcjj_value_real.axpy(aValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk]);
-              correcjj_value_imag.axpy(aValue[jj][ll], allLocalSolutionEvaluations_imag[ll][kk]);
-            }
-            correcii_value_real *= ksquared;
-            correcii_value_imag *= ksquared;
-            correcjj_value_real *= ksquared;
-            correcjj_value_imag *= ksquared;
             auto correcii_jacob_real = allLocalSolutionJacobs_real[0][kk];
             auto correcjj_jacob_real = allLocalSolutionJacobs_real[0][kk];
             correcii_jacob_real *= 0;
@@ -1570,11 +1560,19 @@ public:
             correcjj_jacob_real *= 0;
             auto correcjj_jacob_imag = correcjj_jacob_real;
             for (size_t ll = 0; ll< dimDomain; ++ll){
+              correcii_value_real.axpy(tValue[ii][ll], allLocalSolutionEvaluations_real[ll][kk]);
+              correcii_value_imag.axpy(tValue[ii][ll], allLocalSolutionEvaluations_imag[ll][kk]);
+              correcjj_value_real.axpy(aValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk]);
+              correcjj_value_imag.axpy(aValue[jj][ll], allLocalSolutionEvaluations_imag[ll][kk]);
               correcii_jacob_real.axpy(tValue[ii][ll], allLocalSolutionJacobs_real[ll][kk]);
               correcii_jacob_imag.axpy(tValue[ii][ll], allLocalSolutionJacobs_imag[ll][kk]);
               correcjj_jacob_real.axpy(aValue[jj][ll], allLocalSolutionJacobs_real[ll][kk]);
               correcjj_jacob_imag.axpy(aValue[jj][ll], allLocalSolutionJacobs_imag[ll][kk]);
             }
+            correcii_value_real *= ksquared;
+            correcii_value_imag *= ksquared;
+            correcjj_value_real *= ksquared;
+            correcjj_value_imag *= ksquared;
             correcii_jacob_real *= ksquared;
             correcii_jacob_imag *= ksquared;
             correcjj_jacob_real *= ksquared;
