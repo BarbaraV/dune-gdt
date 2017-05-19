@@ -1622,57 +1622,57 @@ public:
       } //loop over quadrature points
     } //loop over cube entities
     //outside the inclusion
-    assert(cell_solutions_.size()==dimDomain);
-    auto cube_grid_view = cell_solutions_[0]->operator[](0).space().grid_view();
-    //integrate over unit cube
-    for (const auto& entity : DSC::entityRange(cube_grid_view) ) {
-      assert(filter_);
-      if (filter_(cube_grid_view, entity) == true) {
-        //get quadrature rule
-        typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
-        typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
-        const size_t integrand_order = 2 * (cell_solutions_[0]->operator[](0).local_function(entity)->order() - 1);
-        const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(integrand_order));
-        // evaluate the jacobians of all local solutions in all quadrature points
-        std::vector<std::vector<ScalarJacobianRangeType>> allLocalSolutionEvaluations_real(
-            cell_solutions_.size(), std::vector<ScalarJacobianRangeType>(volumeQuadrature.size(), ScalarJacobianRangeType(0.0)));
-        for (auto lsNum : DSC::valueRange(cell_solutions_.size())) {
-          const auto localFunction_real = cell_solutions_[lsNum]->operator[](0).local_function(entity);
-          localFunction_real->jacobian(volumeQuadrature, allLocalSolutionEvaluations_real[lsNum]);
-        }
-        //loop over all quadrature points
-        const auto quadPointEndIt = volumeQuadrature.end();
-        size_t kk = 0;
-        auto ksquared = wavenumber_ * wavenumber_;
-        for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
-          const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
-          //integration factors
-          const double integration_factor = entity.geometry().integrationElement(x);
-          const double quadrature_weight = quadPointIt->weight();
-          //evaluate
-          for (size_t ii = 0; ii<rows; ++ii) {
-            auto& retRow = ret[ii];
-            for (size_t jj = 0; jj< cols; ++jj) {
-              auto reconii_real = allLocalSolutionEvaluations_real[0][kk][0];
-              auto reconjj_real = allLocalSolutionEvaluations_real[0][kk][0];
-              reconii_real *= 0;
-              reconjj_real *= 0;
-              for (size_t ll = 0; ll< dimDomain; ++ll){
-                reconii_real.axpy(tValue[ii][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
-                reconjj_real.axpy(aValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
-              }
-              if (real_part_) {
+    if(real_part_) {
+      assert(cell_solutions_.size()==dimDomain);
+      auto cube_grid_view = cell_solutions_[0]->operator[](0).space().grid_view();
+      //integrate over unit cube
+      for (const auto& entity : DSC::entityRange(cube_grid_view) ) {
+        assert(filter_);
+        if (filter_(cube_grid_view, entity) == true) {
+          //get quadrature rule
+          typedef Dune::QuadratureRules< DomainFieldType, dimDomain > VolumeQuadratureRules;
+          typedef Dune::QuadratureRule< DomainFieldType, dimDomain > VolumeQuadratureType;
+          const size_t integrand_order = 2 * (cell_solutions_[0]->operator[](0).local_function(entity)->order() - 1);
+          const VolumeQuadratureType& volumeQuadrature = VolumeQuadratureRules::rule(entity.type(), boost::numeric_cast< int >(integrand_order));
+          // evaluate the jacobians of all local solutions in all quadrature points
+          std::vector<std::vector<ScalarJacobianRangeType>> allLocalSolutionEvaluations_real(
+              cell_solutions_.size(), std::vector<ScalarJacobianRangeType>(volumeQuadrature.size(), ScalarJacobianRangeType(0.0)));
+          for (auto lsNum : DSC::valueRange(cell_solutions_.size())) {
+            const auto localFunction_real = cell_solutions_[lsNum]->operator[](0).local_function(entity);
+            localFunction_real->jacobian(volumeQuadrature, allLocalSolutionEvaluations_real[lsNum]);
+          }
+          //loop over all quadrature points
+          const auto quadPointEndIt = volumeQuadrature.end();
+          size_t kk = 0;
+          auto ksquared = wavenumber_ * wavenumber_;
+          for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
+            const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
+            //integration factors
+            const double integration_factor = entity.geometry().integrationElement(x);
+            const double quadrature_weight = quadPointIt->weight();
+            //evaluate
+            for (size_t ii = 0; ii<rows; ++ii) {
+              auto& retRow = ret[ii];
+              for (size_t jj = 0; jj< cols; ++jj) {
+                auto reconii_real = allLocalSolutionEvaluations_real[0][kk][0];
+                auto reconjj_real = allLocalSolutionEvaluations_real[0][kk][0];
+                reconii_real *= 0;
+                reconjj_real *= 0;
+                for (size_t ll = 0; ll< dimDomain; ++ll){
+                  reconii_real.axpy(tValue[ii][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
+                  reconjj_real.axpy(aValue[jj][ll], allLocalSolutionEvaluations_real[ll][kk][0]);
+                }
                 auto tmp_result = -1 * ksquared * (reconjj_real * reconii_real);
                 tmp_result -= ksquared * (aValue[jj] * reconii_real);
                 tmp_result -= ksquared * (reconjj_real * tValue[ii]);
                 tmp_result *= (quadrature_weight * integration_factor);
                 retRow[jj] += tmp_result;
-              }
-            } //loop over cols
-          } //loop over rows
-        } //loop over micro quadrature points
-      }//only over entities where filter_=true
-    } //loop over entities
+              } //loop over cols
+            } //loop over rows
+          } //loop over micro quadrature points
+        }//only over entities where filter_=true
+      } //loop over entities
+    } //outside inclusions only necessary for real part
   } // ... evaluate (...)
 
 protected:
