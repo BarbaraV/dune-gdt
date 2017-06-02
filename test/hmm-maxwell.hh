@@ -270,6 +270,8 @@ public:
   typedef typename GridViewImp::ctype                       DomainFieldType;
   static const size_t                                       dimDomain = GridViewImp::dimension;
 
+  typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename GridViewImp::Intersection > BdryInfoType;
+
   typedef std::complex< double > complextype;
 
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType      RealMatrixType;
@@ -293,8 +295,9 @@ public:
 
 
   MaxwellInclusionCell(const GridViewImp& cell_gridview, const ScalarFct& a_real, const ScalarFct& a_imag,
-                       const ConstantFct& wavenumber_squared_neg)
+                       const ConstantFct& wavenumber_squared_neg, const BdryInfoType& info)
     : cell_space_(cell_gridview)
+    , boundary_info_(info)
     , a_real_(a_real)
     , a_imag_(a_imag)
     , wavenumber_squared_neg_(wavenumber_squared_neg)
@@ -338,9 +341,9 @@ public:
     }
     //add Dirichlet constraints, assemble and apply
     Spaces::DirichletConstraints< typename GridViewImp::Intersection >
-           dirichlet_constraints(DSG::BoundaryInfos::AllDirichlet< typename GridViewImp::Intersection >(), cell_space_.mapper().size());
+           dirichlet_constraints(boundary_info_, cell_space_.mapper().size());
     system_assembler_.add(dirichlet_constraints);
-    system_assembler_.assemble();
+    system_assembler_.assemble(); 
     dirichlet_constraints.apply(system_matrix_real_);
     dirichlet_constraints.apply(system_matrix_imag_);
     for (size_t ii = 0; ii < dimDomain; ++ii) {
@@ -462,6 +465,7 @@ public:
 
 private:
   const SpaceType                      cell_space_;
+  const BdryInfoType& 		       boundary_info_;
   const ScalarFct&                     a_real_;
   const ScalarFct&                     a_imag_;
   const ConstantFct&                   wavenumber_squared_neg_;
@@ -568,6 +572,7 @@ public:
   typedef Dune::GDT::Operators::CurlCellReconstruction< SpaceType, CellGridType >                       CurlCellProblem;
   typedef Dune::GDT::Operators::IdCellReconstruction< SpaceType, CellGridType >                         IdCellProblem;
   typedef Dune::GDT::MaxwellInclusionCell< InclusionGridViewType >                                      InclusionCellProblem;
+  typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename InclusionGridViewType::Intersection >      InclusionBoundaryInfoType;
   typedef typename CurlCellProblem::PeriodicEntityType                                                  CellEntityType;
   typedef typename CurlCellProblem::DomainFieldType                                                     CellDomainFieldType;
   typedef typename CurlCellProblem::ScalarFct                                                           CellScalarFct;
@@ -587,6 +592,7 @@ public:
                            CellGridType& cellgrid,
                            const InclusionGridViewType& inclusion_gridview,
                            const BoundaryInfoType& info,
+                           const InclusionBoundaryInfoType& incl_info,
                            const CellScalarFct& mu_diel,
                            const CellScalarFct& mu_incl_real,
                            const CellScalarFct& mu_incl_imag,
@@ -603,6 +609,7 @@ public:
                            const MacroScalarFct& mu_incl_imag_macro)
     : coarse_space_(macrogridview)
     , bdry_info_(info)
+    , incl_bdry_info_(incl_info)
     , macro_mu_diel_(mu_diel_macro)
     , macro_mu_incl_real_(mu_incl_real_macro)
     , macro_mu_incl_imag_(mu_incl_imag_macro)
@@ -621,7 +628,7 @@ public:
     , filter_inclusion_(filter_inclusion)
     , curl_cell_(coarse_space_, cellgrid, periodic_mu_diel_, div_param_, stabil_param_, filter_inclusion_)
     , id_cell_(coarse_space_, cellgrid, k_squared_, stabil_param_, filter_inclusion_)
-    , inclusion_cell_(inclusion_gridview, periodic_mu_incl_real_, periodic_mu_incl_imag_, k_squared_neg_)
+    , inclusion_cell_(inclusion_gridview, periodic_mu_incl_real_, periodic_mu_incl_imag_, k_squared_neg_, incl_bdry_info_)
     , is_assembled_(false)
     , system_matrix_real_(0,0)
     , system_matrix_imag_(0,0)
@@ -889,6 +896,7 @@ public:
 private:
   const SpaceType                     coarse_space_;
   const BoundaryInfoType&             bdry_info_;
+  const InclusionBoundaryInfoType&    incl_bdry_info_;
   const MacroScalarFct&               macro_mu_diel_;
   const MacroScalarFct&               macro_mu_incl_real_;
   const MacroScalarFct&               macro_mu_incl_imag_;
