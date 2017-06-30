@@ -1607,9 +1607,9 @@ public:
               tmp_result -= value_real * ((correcjj_jacob_real[2][1] - correcjj_jacob_real[1][2]) * (correcii_jacob_imag[2][1] - correcii_jacob_imag[1][2])
                                            + (correcjj_jacob_real[0][2] - correcjj_jacob_real[2][0]) * (correcii_jacob_imag[0][2] - correcii_jacob_imag[2][0])
                                            + (correcjj_jacob_real[1][0] - correcjj_jacob_real[0][1]) * (correcii_jacob_imag[1][0] - correcii_jacob_imag[0][1]));
-              tmp_result -= value_real * ((correcjj_jacob_imag[2][1] - correcjj_jacob_imag[1][2]) * (correcii_jacob_real[2][1] - correcii_jacob_real[1][2])
+              tmp_result += value_real * ((correcjj_jacob_imag[2][1] - correcjj_jacob_imag[1][2]) * (correcii_jacob_real[2][1] - correcii_jacob_real[1][2])
                                            + (correcjj_jacob_imag[0][2] - correcjj_jacob_imag[2][0]) * (correcii_jacob_real[0][2] - correcii_jacob_real[2][0])
-                                           + (correcjj_jacob_imag[1][0] - correcjj_jacob_imag[0][1]) * (correcii_jacob_real[1][0] - correcii_jacob_real[0][1]));
+                                           + (correcjj_jacob_imag[1][0] - correcjj_jacob_imag[0][1]) * (correcii_jacob_real[1][0] - correcii_jacob_real[0][1])); //correct sign?!
               tmp_result -= ksquared * (correcjj_value_imag * tValue[ii]);
               tmp_result += ksquared * (aValue[jj] * correcii_value_imag);
               tmp_result += ksquared * (correcjj_value_real * correcii_value_imag);
