@@ -164,6 +164,21 @@ public:
       Spaces::DirichletConstraints< typename MacroGridViewType::Intersection >
               dirichlet_constraints(bdry_info_, coarse_space_.mapper().size());
 
+      //prepare for cell_solution in case of periodicity
+      AllCurlSolutionsStorageType curl_cell_solutions(dimDomain);
+        for (auto& it : curl_cell_solutions) {
+          std::vector<DiscreteFunction< typename CurlCellReconstruction::CellSpaceType, RealVectorType > >
+                  it1(1, DiscreteFunction< typename CurlCellReconstruction::CellSpaceType, RealVectorType >(curl_cell_.cell_space()));
+          it = DSC::make_unique< typename CurlCellReconstruction::CellDiscreteFunctionType >(it1);
+        }
+       
+      AllIdSolutionsStorageType ell_cell_solutions(dimDomain);
+        for (auto& it : ell_cell_solutions) {
+          std::vector<DiscreteFunction< typename EllipticCellReconstruction::CellSpaceType, RealVectorType > >
+                  it1(2, DiscreteFunction< typename EllipticCellReconstruction::CellSpaceType, RealVectorType >(ell_cell_.cell_space()));
+          it = DSC::make_unique< typename EllipticCellReconstruction::CellDiscreteFunctionType >(it1);
+        }
+
       if(!is_periodic_) {
         //lhs
         typedef LocalOperator::Codim0Integral< LocalEvaluation::HMMCurlcurl< CellScalarFct, CurlCellReconstruction > > HMMCurlOperator;
@@ -180,20 +195,8 @@ public:
       }
       else {
         //solve cell problems
-        AllCurlSolutionsStorageType curl_cell_solutions(dimDomain);
-          for (auto& it : curl_cell_solutions) {
-            std::vector<DiscreteFunction< typename CurlCellReconstruction::CellSpaceType, RealVectorType > >
-                    it1(1, DiscreteFunction< typename CurlCellReconstruction::CellSpaceType, RealVectorType >(curl_cell_.cell_space()));
-            it = DSC::make_unique< typename CurlCellReconstruction::CellDiscreteFunctionType >(it1);
-          }
         std::cout<< "computing curl cell problems"<< std::endl;
         curl_cell_.compute_cell_solutions(curl_cell_solutions);
-        AllIdSolutionsStorageType ell_cell_solutions(dimDomain);
-          for (auto& it : ell_cell_solutions) {
-            std::vector<DiscreteFunction< typename EllipticCellReconstruction::CellSpaceType, RealVectorType > >
-                    it1(2, DiscreteFunction< typename EllipticCellReconstruction::CellSpaceType, RealVectorType >(ell_cell_.cell_space()));
-            it = DSC::make_unique< typename EllipticCellReconstruction::CellDiscreteFunctionType >(it1);
-          }
         std::cout<< "computing identity cell problems"<< std::endl;
         ell_cell_.compute_cell_solutions(ell_cell_solutions);
 
@@ -280,8 +283,12 @@ public:
     if (!is_assembled_)
       assemble();
     VectorType solution(coarse_space_.mapper().size());
-    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+    typedef Dune::Stuff::LA::Solver< MatrixType > SolverType;
+    Dune::Stuff::Common::Configuration options = SolverType::options("bicgstab.diagonal");
+    options.set("max_iter", "250000", true);
+    options.set("precision", "1e-6", true);
+    SolverType solver(system_matrix_);
+    solver.apply(rhs_vector_, solution, options);
     //get real and imaginary part and make discrete functions
     RealVectorType solution_real(coarse_space_.mapper().size());
     RealVectorType solution_imag(coarse_space_.mapper().size());
