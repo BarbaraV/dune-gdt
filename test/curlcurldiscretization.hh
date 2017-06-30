@@ -32,6 +32,7 @@
 #include <dune/gdt/functionals/l2.hh>
 #include <dune/gdt/assembler/system.hh>
 #include <dune/gdt/spaces/constraints.hh>
+#include <dune/gdt/localoperator/codim1.hh>
 
 
 
