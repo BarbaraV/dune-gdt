@@ -750,6 +750,234 @@ private:
 };  //class DeltaCorrectorHelmholtz
 
 
+/** class to describe the zeroth order approximation to the heterogeneous solution for a highly heterogeneous Maxwell scattering problem
+ *
+ * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM solution
+ * \tparam FineFunctionCurlImp Type for corrector to the curl of the HMM solution
+ * \tparam FineFunctionIdImp Type for the corrector to the HMM solution itself (identity part, outside the inclusions)
+ * \tparam FineFunctionInclImp Type for the corrector to the HMM solution itself (identity part, inside the inclusions)
+ * \note this class describes a GlobalFunction and its evaluation (and jacobian) use the EntityInlevelSearch, which may not be optimal
+ */
+template< class CoarseFunctionImp, class FineFunctionCurlImp, class FineFunctionIdImp, class FineFunctionInclImp >
+class DeltaCorrectorMaxwell
+  : public Dune::Stuff::GlobalFunctionInterface< typename CoarseFunctionImp::EntityType,
+                                                 typename CoarseFunctionImp::DomainFieldType,
+                                                 CoarseFunctionImp::dimDomain,
+                                                 typename CoarseFunctionImp::RangeFieldType,
+                                                 CoarseFunctionImp::dimRange >
+{
+  typedef Dune::Stuff::GlobalFunctionInterface< typename CoarseFunctionImp::EntityType,
+                                                typename CoarseFunctionImp::DomainFieldType, CoarseFunctionImp::dimDomain,
+                                                typename CoarseFunctionImp::RangeFieldType, CoarseFunctionImp::dimRange > BaseType;
+  typedef DeltaCorrectorMaxwell< CoarseFunctionImp, FineFunctionCurlImp, FineFunctionIdImp, FineFunctionInclImp >         ThisType;
+
+public:
+  using typename BaseType::LocalfunctionType;
+  using typename BaseType::DomainType;
+  using typename BaseType::DomainFieldType;
+  using typename BaseType::RangeType;
+  using typename BaseType::JacobianRangeType;
+
+  static_assert(Dune::GDT::is_discrete_function< CoarseFunctionImp >::value, "macroscopic function has to be a discrete function");
+  static_assert(Dune::GDT::is_discrete_function< FineFunctionCurlImp >::value, "curl cell solution has to be a discrete function");
+  static_assert(Dune::GDT::is_discrete_function< FineFunctionIdImp >::value, "identity cell solution has to be a discrete function");
+  static_assert(Dune::GDT::is_discrete_function< FineFunctionInclImp >::value, "inclusion cell solution has to be a discrete function");
+
+  typedef std::function< bool(const typename CoarseFunctionImp::SpaceType::GridViewType&, const typename CoarseFunctionImp::EntityType&) > MacroFilterType;
+  typedef std::function< bool(const typename FineFunctionCurlImp::SpaceType::GridViewType&, const typename FineFunctionCurlImp::EntityType&) > FineFilterType;
+
+  static const bool available = false;
+
+  static std::string static_id()
+  {
+    return CoarseFunctionImp::static_id() + ".corrector";
+  }
+
+  DeltaCorrectorMaxwell(const std::vector< CoarseFunctionImp >& macro_fct,
+                        const std::vector< std::vector< FineFunctionCurlImp > >& curl_cell_solutions,
+                        const std::vector< std::vector< FineFunctionIdImp > >& id_cell_solutions,
+                        const std::vector< std::vector< FineFunctionInclImp > >& incl_cell_solutions,
+                        MacroFilterType filter_scatterer,
+                        FineFilterType filter_inclusion,
+                        const double& wavenumber,
+                        const DomainFieldType delta,
+                        const std::string which_part)
+    : macro_function_(macro_fct)
+    , curl_cell_solutions_(curl_cell_solutions)
+    , id_cell_solutions_(id_cell_solutions)
+    , incl_cell_solutions_(incl_cell_solutions)
+    , filter_scatterer_(filter_scatterer)
+    , filter_inclusion_(filter_inclusion)
+    , wavenumber_(wavenumber)
+    , delta_(delta)
+    , part_(which_part)
+  {
+    assert(macro_fct.size() > 1);
+  }
+
+  DeltaCorrectorMaxwell(const ThisType& /*other*/) = default;
+
+  ThisType& operator=(const ThisType& /*other*/) = delete;
+
+  virtual std::string type() const override final
+  {
+    return CoarseFunctionImp::static_id() + ".corrector." + part_;
+  }
+
+  virtual std::string name() const override final
+  {
+    return CoarseFunctionImp::static_id() + ".corrector." + part_;
+  }
+
+  virtual size_t order() const override final
+  {
+    return macro_function_[0].local_function(*macro_function_[0].space().grid_view().template begin<0>())->order();
+  }
+
+  /** @brief evaluate evaluates the zeroth order HMM approximation to a highly heterogeneous Helmholtz problem
+   *
+   * @param xx global point of the macroscopic computational domain
+   * @param ret vector the evaluation is stored in
+   * @note only the zero'th order terms are considered
+   */
+  virtual void evaluate(const DomainType& xx, RangeType& ret) const override final
+  {
+    //clear ret
+    ret *= 0;
+    //tmp storage
+    std::vector< RangeType > macro_total(macro_function_.size(), RangeType(0));
+    bool inside_scatterer;
+    //bool outside_inclusion;
+    //entity search in the macro grid view
+    typedef typename CoarseFunctionImp::SpaceType::GridViewType MacroGridViewType;
+    Dune::Stuff::Grid::EntityInlevelSearch< MacroGridViewType > entity_search(macro_function_[0].space().grid_view());
+    std::vector< Dune::FieldVector< typename MacroGridViewType::ctype, MacroGridViewType::dimension > > global_point(1);
+    global_point[0] = xx;
+    const auto source_entity_ptr = entity_search(global_point);
+    assert(source_entity_ptr.size() == 1);
+    const auto& source_entity_unique_ptr = source_entity_ptr[0];
+    if(source_entity_unique_ptr) {
+      const auto source_entity_ptr1 = *source_entity_unique_ptr;
+      const auto& source_entity = *source_entity_ptr1;
+      inside_scatterer = filter_scatterer_(macro_function_[0].space().grid_view(), source_entity);
+      const auto local_source_point = source_entity.geometry().local(xx);
+      //evaluate macro function
+      for (size_t ii = 0; ii < macro_function_.size(); ++ii)
+        macro_function_[ii].local_function(source_entity)->evaluate(local_source_point, macro_total[ii]);
+    }
+    if (part_ == "real")
+      ret += macro_total[0];
+    else if (part_ == "imag")
+      ret += macro_total[1];
+    else
+      DUNE_THROW(Dune::NotImplemented, "You can only compute real or imag part");
+    if (inside_scatterer) {
+      //preparation for fine part
+      DomainType yy(xx);
+      yy /= delta_;
+      DomainFieldType intpart;
+      for (size_t ii = 0; ii < CoarseFunctionImp::dimDomain; ++ii) {
+        auto fracpart = std::modf(yy[ii], &intpart);
+        if (fracpart < 0)
+          yy[ii] = 1 + fracpart;
+        else
+          yy[ii] = fracpart;
+      }
+      //now yy is a (global) point in the unit cube
+      //do now the same entity search as before, but for the grid view of the unit cube
+      std::vector< std::vector< typename FineFunctionIdImp::JacobianRangeType > >
+        id_cell_jacobian(id_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::JacobianRangeType >(id_cell_solutions_[0].size()));
+      std::vector< std::vector< typename FineFunctionInclImp::RangeType > >
+        incl_cell_evaluation(incl_cell_solutions_.size(), std::vector< typename FineFunctionInclImp::RangeType >(incl_cell_solutions_[0].size()));
+      bool inside_inclusion = true;
+      typedef typename FineFunctionIdImp::SpaceType::GridViewType FineGridViewType;
+      Dune::Stuff::Grid::EntityInlevelSearch< FineGridViewType > entity_search_fine(id_cell_solutions_[0][0].space().grid_view());
+      std::vector< Dune::FieldVector< typename FineGridViewType::ctype, FineGridViewType::dimension > > fine_point(1);
+      fine_point[0] = yy;
+      const auto source_entity_ptr_fine = entity_search_fine(fine_point);
+      assert(source_entity_ptr_fine.size() == 1);
+      const auto& source_entity_unique_ptr_fine = source_entity_ptr_fine[0];
+      if(source_entity_unique_ptr_fine) {
+        const auto source_entity_ptr1 = *source_entity_unique_ptr_fine;
+        const auto& source_entity = *source_entity_ptr1;
+        const auto local_source_point = source_entity.geometry().local(yy);
+        inside_inclusion = !filter_inclusion_(id_cell_solutions_[0][0].space().grid_view(), source_entity);
+        if (!inside_inclusion) {
+          //evaluate identity cell solutions' jacobian
+          for (size_t ii = 0; ii < id_cell_solutions_.size(); ++ii) {
+            for (size_t jj = 0; jj < id_cell_solutions_[ii].size(); ++jj)
+              id_cell_solutions_[ii][jj].local_function(source_entity)->jacobian(local_source_point, id_cell_jacobian[ii][jj]);
+            if (part_ == "real") {
+              ret.axpy(macro_total[0][ii], id_cell_jacobian[ii][0][0]); //real*real
+              if (id_cell_solutions_[ii].size() > 1)
+                ret.axpy(-1*macro_total[1][ii], id_cell_jacobian[ii][1][0]); //-imag*imag
+            }
+            else if (part_ == "imag") {
+              ret.axpy(macro_total[1][ii], id_cell_jacobian[ii][0][0]); //imag*real
+              if(id_cell_solutions_[ii].size() > 1)
+                ret.axpy(macro_total[0][ii], id_cell_jacobian[ii][1][0]); //real*imag
+            }
+          }
+        } //only if we are not in the inclusions
+      }
+      if (inside_inclusion) {
+        //now do an entitysearch in the inclusion grid_view
+        typedef typename FineFunctionInclImp::SpaceType::GridViewType FineInclGridViewType;
+        Dune::Stuff::Grid::EntityInlevelSearch< FineInclGridViewType > entity_search_fine_incl(incl_cell_solutions_[0][0].space().grid_view());
+        std::vector< Dune::FieldVector< typename FineInclGridViewType::ctype, FineInclGridViewType::dimension > > fine_point_incl(1);
+        fine_point_incl[0] = yy;
+        const auto source_entity_ptr_fine_incl = entity_search_fine_incl(fine_point_incl);
+        assert(source_entity_ptr_fine_incl.size() == 1);
+        const auto& source_entity_unique_ptr_fine_incl = source_entity_ptr_fine_incl[0];
+        if(source_entity_unique_ptr_fine_incl) {
+          const auto source_entity_ptr1 = *source_entity_unique_ptr_fine_incl;
+          const auto& source_entity = *source_entity_ptr1;
+          const auto local_source_point = source_entity.geometry().local(yy);
+          for (size_t ii = 0; ii < incl_cell_solutions_.size(); ++ii) {
+            for (size_t jj = 0; jj < incl_cell_solutions_[ii].size(); ++jj) {
+              incl_cell_solutions_[ii][jj].local_function(source_entity)->evaluate(local_source_point, incl_cell_evaluation[ii][jj]);
+            }
+            if (part_ == "real") {
+              ret.axpy(wavenumber_ * wavenumber_ * macro_total[0][ii], incl_cell_evaluation[ii][0]); //real*real
+              if (incl_cell_solutions_[0].size() > 1) 
+                ret.axpy(-1* wavenumber_ * wavenumber_ * macro_total[1][ii], incl_cell_evaluation[ii][1]); //-imag*imag
+            }
+            else if (part_ == "imag") {
+              ret.axpy(wavenumber_ * wavenumber_ * macro_total[1][ii],  incl_cell_evaluation[ii][0]); //imag*real
+              if (incl_cell_solutions_[0].size() > 1) 
+                ret.axpy(wavenumber_ * wavenumber_ * macro_total[0][ii], incl_cell_evaluation[ii][1]); //real*imag
+            }
+          }
+        }
+      }  //inside the inclusion
+    } //inside scatterer
+  } //evaluate
+
+
+  /** @brief jacobian evaluates the zeroth order HMM approximation to the jacobian of the solution of a highly heterogeneous Maxwell scattering problem
+   *
+   * @param xx global point of the macroscopic computational domain
+   * @param ret matrix vector the evaluation is stored in
+   * @note only the zero'th order terms are considered
+   */
+  virtual void jacobian(const DomainType& xx, JacobianRangeType& ret) const override final
+  {
+    DUNE_THROW(Dune::NotImplemented, "Jacobian not yet implemented for this corrector type");
+  } //jacobian
+
+
+private:
+  const std::vector< CoarseFunctionImp >                  macro_function_;
+  const std::vector< std::vector< FineFunctionCurlImp > > curl_cell_solutions_;
+  const std::vector< std::vector< FineFunctionIdImp > >   id_cell_solutions_;
+  const std::vector< std::vector< FineFunctionInclImp > > incl_cell_solutions_;
+  MacroFilterType                                         filter_scatterer_;
+  FineFilterType                                          filter_inclusion_;
+  const DomainFieldType                                   wavenumber_;
+  const DomainFieldType                                   delta_;
+  const std::string                                       part_;
+};  //class DeltaCorrectorMaxwell
+
 
 } //namespace GDT
 } //namespace Dune

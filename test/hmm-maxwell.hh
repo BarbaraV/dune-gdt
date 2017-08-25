@@ -366,7 +366,7 @@ public:
       DUNE_THROW(Dune::InvalidStateException, "RHS vector invalid!");
     typedef Stuff::LA::Solver< MatrixType > SolverType;
     Stuff::Common::Configuration options = SolverType::options("bicgstab.diagonal");
-    options.set("max_iter", "50000", true);
+    options.set("max_iter", "350000", true);
     options.set("precision", "1e-6", true);
     SolverType solver(system_matrix_);
     solver.apply(tmp_rhs, tmp_solution, options);
@@ -803,9 +803,11 @@ public:
    * @brief solve_and_correct solves the HMM problem and directly computes the (discrete) correctors
    * @param macro_solution a vector (2 items, first for real, second for imaginary part) of DiscreteFunction (the space has to be given),
    *  where the macro_solution of the HMM will be saved to
-   * @return a pair of PeriodicCorrector objects for the curl and identity corrector function
+   * @return a tuple of PeriodicCorrector objects for the curl and identity corrector function
    */
-/*  std::pair< Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllipticCellDiscreteFctType >, Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType > >
+  std::tuple< Dune::GDT::PeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >,
+              Dune::GDT::PeriodicCorrector< DiscreteFunctionType, IdCellDiscreteFctType >,
+              Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType> >
     solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution)
   {
     if (!is_assembled_)
@@ -822,14 +824,24 @@ public:
     macro_solution[0].vector() = solution_real;
     macro_solution[1].vector() = solution_imag;
     //compute cell problems
-    AllEllipticSolutionsStorageType elliptic_cell_solutions(dimDomain);
-    for (auto& it : elliptic_cell_solutions) {
-      std::vector< EllipticCellDiscreteFctType >it1(1, EllipticCellDiscreteFctType(elliptic_cell_.cell_space()));
-      it = DSC::make_unique< typename EllipticCellProblem::CellDiscreteFunctionType >(it1);
+    //curl
+    AllCurlSolutionsStorageType curl_cell_solutions(dimDomain);
+    for (auto& it : curl_cell_solutions) {
+      std::vector< CurlCellDiscreteFctType >it1(1, CurlCellDiscreteFctType(curl_cell_.cell_space()));
+      it = DSC::make_unique< typename CurlCellProblem::CellDiscreteFunctionType >(it1);
     }
-    std::cout<< "computing elliptic cell problems"<< std::endl;
-    elliptic_cell_.compute_cell_solutions(elliptic_cell_solutions);
-    AllInclusionSolutionsStorageType inclusion_cell_solutions(1);
+    std::cout<< "computing curl cell problems"<< std::endl;
+    curl_cell_.compute_cell_solutions(curl_cell_solutions);
+    //identity
+    AllIdSolutionsStorageType id_cell_solutions(dimDomain);
+    for (auto& it : id_cell_solutions) {
+      std::vector< IdCellDiscreteFctType >it1(1, IdCellDiscreteFctType(id_cell_.cell_space()));
+      it = DSC::make_unique< typename IdCellProblem::CellDiscreteFunctionType >(it1);
+    }
+    std::cout<< "computing identity cell problems"<< std::endl;
+    id_cell_.compute_cell_solutions(id_cell_solutions);
+    //inclusion
+    AllInclusionSolutionsStorageType inclusion_cell_solutions(dimDomain);
     for (auto& it : inclusion_cell_solutions) {
       std::vector< InclusionCellDiscreteFctType>it1(2, InclusionCellDiscreteFctType(inclusion_cell_.cell_space()));
       it = DSC::make_unique< typename InclusionCellProblem::CellDiscreteFunctionType >(it1);
@@ -837,39 +849,45 @@ public:
     std::cout<< "computing inclusion cell problems"<< std::endl;
     inclusion_cell_.compute_cell_solutions(inclusion_cell_solutions);
 
-    std::vector< std::vector< EllipticCellDiscreteFctType > > elliptic_cell_functions(dimDomain,
-                                                                                      std::vector< EllipticCellDiscreteFctType >(1, EllipticCellDiscreteFctType(elliptic_cell_.cell_space())));
-    std::vector< std::vector< InclusionCellDiscreteFctType > > incl_cell_functions(1,
+    std::vector< std::vector< CurlCellDiscreteFctType > > curl_cell_functions(dimDomain,
+                                                                                      std::vector< CurlCellDiscreteFctType >(1, CurlCellDiscreteFctType(curl_cell_.cell_space())));
+    std::vector< std::vector< IdCellDiscreteFctType > > id_cell_functions(dimDomain,
+                                                                                   std::vector< IdCellDiscreteFctType >(1, IdCellDiscreteFctType(id_cell_.cell_space())));
+    std::vector< std::vector< InclusionCellDiscreteFctType > > incl_cell_functions(dimDomain,
                                                                                    std::vector< InclusionCellDiscreteFctType >(2, InclusionCellDiscreteFctType(inclusion_cell_.cell_space())));
     for (size_t ii = 0; ii < dimDomain; ++ii){
-      elliptic_cell_functions[ii][0].vector() = elliptic_cell_solutions[ii]->operator[](0).vector();
+      curl_cell_functions[ii][0].vector() = curl_cell_solutions[ii]->operator[](0).vector();
+      id_cell_functions[ii][0].vector() = id_cell_solutions[ii]->operator[](0).vector();
+      incl_cell_functions[ii][0].vector() = inclusion_cell_solutions[ii]->operator[](0).vector();
+      incl_cell_functions[ii][1].vector() = inclusion_cell_solutions[ii]->operator[](1).vector();
     }
-    incl_cell_functions[0][0].vector() = inclusion_cell_solutions[0]->operator[](0).vector();
-    incl_cell_functions[0][1].vector() = inclusion_cell_solutions[0]->operator[](1).vector();
     //build correctors
-    return std::make_pair(Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllipticCellDiscreteFctType >(macro_solution, elliptic_cell_functions, "elliptic"),
-                          Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType >(macro_solution, incl_cell_functions, "id_incl"));
+    return std::make_tuple(Dune::GDT::PeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >(macro_solution, curl_cell_functions, "curl"),
+                           Dune::GDT::PeriodicCorrector< DiscreteFunctionType, IdCellDiscreteFctType >(macro_solution, id_cell_functions, "id"),
+                           Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType >(macro_solution, incl_cell_functions, "id_incl"));
   } //solve and correct
-*/
+
   /** \brief computes the error between a reference solution (to the heterogeneous problem, on a fine grid) to the HMM approximation
    *
    * the HMM approximation is turned into a \ref DeltaCorrectorHelmholtz and the L2 or H1 seminorms can be requested
    * \tparam ReferenceFunctionImp Type for the discrete reference solution
    * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM approximation
-   * \tparam EllipticCellFunctionImp Type for the solutions to the cell problem for the gradient
+   * \tparam CurlCellFunctionImp Type for the solutions to the cell problem for the curl
+   * \tparam CurlCellFunctionImp Type for the solutions to the cell problem for the identity outside the inclusions
    * \tparam InclusionCellFunctionImp Type for the solutions to the cell problem for the identity part in the inclusions
    */
-/*  template< class ReferenceFunctionImp, class CoarseFunctionImp, class EllipticCellFunctionImp, class InclusionCellFunctionImp >
+  template< class ReferenceFunctionImp, class CoarseFunctionImp, class CurlCellFunctionImp, class IdCellFunctionImp, class InclusionCellFunctionImp >
   RangeFieldType reference_error(std::vector< ReferenceFunctionImp >& reference_sol,
-                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, EllipticCellFunctionImp >& elliptic_corrector,
+                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, CurlCellFunctionImp >& curl_corrector,
+                                 Dune::GDT::PeriodicCorrector< CoarseFunctionImp, IdCellFunctionImp >& id_corrector,
                                  Dune::GDT::PeriodicCorrector< CoarseFunctionImp, InclusionCellFunctionImp >& inclusion_corrector,
                                  double delta, std::string type)
   {
-    //build DeltaCorrectorHelmholtz
-    typedef Dune::GDT::DeltaCorrectorHelmholtz< CoarseFunctionImp, EllipticCellFunctionImp, InclusionCellFunctionImp > DeltaCorrectorType;
-    DeltaCorrectorType corrector_real(elliptic_corrector.macro_function(), elliptic_corrector.cell_solutions(), inclusion_corrector.cell_solutions(),
+    //build DeltaCorrectorMaxwell
+    typedef Dune::GDT::DeltaCorrectorMaxwell< CoarseFunctionImp, CurlCellFunctionImp, IdCellFunctionImp, InclusionCellFunctionImp > DeltaCorrectorType;
+    DeltaCorrectorType corrector_real(curl_corrector.macro_function(), curl_corrector.cell_solutions(), id_corrector.cell_solutions(), inclusion_corrector.cell_solutions(),
                                       filter_scatterer_, filter_inclusion_, wavenumber_, delta, "real");
-    DeltaCorrectorType corrector_imag(elliptic_corrector.macro_function(), elliptic_corrector.cell_solutions(), inclusion_corrector.cell_solutions(),
+    DeltaCorrectorType corrector_imag(curl_corrector.macro_function(), curl_corrector.cell_solutions(), id_corrector.cell_solutions(), inclusion_corrector.cell_solutions(),
                                       filter_scatterer_, filter_inclusion_, wavenumber_, delta, "imag");
     //build errors
     typedef Dune::Stuff::Functions::Difference< ReferenceFunctionImp, DeltaCorrectorType > DifferenceFunctionType;
@@ -883,16 +901,10 @@ public:
       result += l2_product.apply2(error_imag, error_imag);
       return std::sqrt(result);
     }
-    else if(type == "h1semi") {
-      Dune::GDT::Products::H1Semi< typename ReferenceFunctionImp::SpaceType::GridViewType > h1_product(reference_sol[0].space().grid_view());
-      result += h1_product.apply2(error_real, error_real);
-      result += h1_product.apply2(error_imag, error_imag);
-      return std::sqrt(result);
-    }
     else
       DUNE_THROW(Dune::NotImplemented, "This type of norm is not implemented");
   } //reference error
-*/
+
 private:
   const SpaceType                     coarse_space_;
   const BoundaryInfoType&             bdry_info_;
@@ -923,6 +935,6 @@ private:
   mutable RealVectorType              rhs_vector_real_;
   mutable RealVectorType              rhs_vector_imag_;
   mutable VectorType                  rhs_vector_;
-}; //class HMMHelmholtzDiscretization
+}; //class HMMMaxwellDiscretization
 
 #endif // DUNE_GDT_TEST_HMM_MAXWELL_HH
