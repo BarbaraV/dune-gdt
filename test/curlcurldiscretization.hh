@@ -51,8 +51,8 @@
  * \tparam VectorImp Type of the vectors for the right hand side and the solution
  */
 
-template< class GridViewType,
-          int polynomialOrder >
+template< class GridViewType, int polynomialOrder,
+          bool is_matrix_curl = false, bool is_matrix_id = false >
 class Discretization{
 public:
   typedef typename GridViewType::ctype DomainFieldType;
@@ -62,7 +62,6 @@ public:
 
   typedef Dune::Stuff::Grid::BoundaryInfoInterface< typename GridViewType::Intersection >                                                               BoundaryInfoType;
   typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, dimRange > Vectorfct;
-  typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, 1 >        ScalarFct;
 
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::MatrixType                 MatrixType;
   typedef Dune::Stuff::LA::Container< double, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType                 VectorType;
@@ -74,12 +73,25 @@ public:
   typedef Dune::GDT::DiscreteFunction< SpaceType, VectorType >       DiscreteFunctionType;
   typedef Dune::GDT::ConstDiscreteFunction < SpaceType, VectorType > ConstDiscreteFunctionType;
 
+private:
+  template< bool is_matrix, bool anything = true >
+  struct Helper {
+    typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, 1 > ParameterFctType;
+  };
+
+  template< bool anything >
+  struct Helper< true, anything > {
+    typedef Dune::Stuff::LocalizableFunctionInterface< typename GridViewType::template Codim< 0 >::Entity, DomainFieldType, dimDomain, double, dimRange, dimRange > ParameterFctType;
+  };
+public:
+  typedef typename Helper< is_matrix_curl >::ParameterFctType 		  CurlParameterType;
+  typedef typename Helper< is_matrix_id >::ParameterFctType  		  IdParameterType;
 
   Discretization(const GridViewType& gp,
                  const BoundaryInfoType& info,
-                 const ScalarFct& mu,
-                 const ScalarFct& kappareal,
-                 const ScalarFct& kappaimag,
+                 const CurlParameterType& mu,
+                 const IdParameterType& kappareal,
+                 const IdParameterType& kappaimag,
                  const Vectorfct& srcreal,
                  const Vectorfct& srcimag)
     : space_(gp)
@@ -130,14 +142,14 @@ public:
       grid_walker.add(*source_functional_imag);
 
       //lhs
-      typedef GDT::Operators::CurlCurl< ScalarFct, MatrixType, SpaceType > CurlOperatorType;
+      typedef GDT::Operators::CurlCurl< CurlParameterType, MatrixType, SpaceType > CurlOperatorType;
       CurlOperatorType curlcurl_operator(mu_, system_matrix_real_, space_);
       grid_walker.add(curlcurl_operator);
-      typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< ScalarFct > > IdOperatorType;
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< IdParameterType > > IdOperatorType;
       const IdOperatorType identity_operator1(kappa_real_);
       const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler1(identity_operator1);
       grid_walker.add(idMatrixAssembler1, system_matrix_real_);
-      typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< ScalarFct > > IdOperatorType;
+      typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< IdParameterType > > IdOperatorType;
       const IdOperatorType identity_operator2(kappa_imag_);
       const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler2(identity_operator2);
       grid_walker.add(idMatrixAssembler2, system_matrix_imag_);
@@ -214,9 +226,9 @@ public:
 private:
   const SpaceType           space_;
   const BoundaryInfoType&   boundary_info_;
-  const ScalarFct&          mu_;
-  const ScalarFct&          kappa_real_;
-  const ScalarFct&          kappa_imag_;
+  const CurlParameterType&  mu_;
+  const IdParameterType&    kappa_real_;
+  const IdParameterType&    kappa_imag_;
   const Vectorfct&          sourceterm_real_;
   const Vectorfct&          sourceterm_imag_;
   mutable bool              is_assembled_;
@@ -226,7 +238,7 @@ private:
   mutable VectorType        rhs_vector_real_;
   mutable VectorType        rhs_vector_imag_;
   mutable VectorTypeComplex rhs_vector_total_;
-}; //class discretization
+}; //class Discretization
 
 
 /** \brief Class to discretize scattering curl-curl problems
@@ -441,6 +453,6 @@ private:
   mutable VectorType        rhs_vector_real_;
   mutable VectorType        rhs_vector_imag_;
   mutable VectorTypeComplex rhs_vector_total_;
-}; //class discretization
+}; //class ScatteringDiscretization
 
 #endif // DUNE_GDT_TEST_CURLCURLDISCRETIZATION_HH
