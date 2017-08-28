@@ -616,7 +616,7 @@ public:
   /// \{
 
   /**
-    * \return localFunction.order()+(testBase.order()-1)+(ansatzBase.order()-1)
+    * \return localFunction.order()+testBase.order()+ansatzBase.order()
     */
   template< class R, size_t rL, size_t rCl, size_t rT, size_t rCT, size_t rA, size_t rCA >
   size_t order(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, rL, rCl >& localFunctionreal,
@@ -626,8 +626,8 @@ public:
   const
   {
     return boost::numeric_cast< size_t >(std::max(ssize_t(localFunctionreal.order()), ssize_t(localFunctionimag.order())))
-     + boost::numeric_cast< size_t >(std::max(ssize_t(testBase.order()) -1, ssize_t(0)))
-     + boost::numeric_cast< size_t >(std::max(ssize_t(ansatzBase.order()) - 1, ssize_t(0)));
+     + boost::numeric_cast< size_t >(std::max(ssize_t(testBase.order()), ssize_t(0)))
+     + boost::numeric_cast< size_t >(std::max(ssize_t(ansatzBase.order()), ssize_t(0)));
   } // ...order(....)
 
 
