@@ -129,8 +129,8 @@ public:
   typedef typename FunctionType::EntityType                                           EntityType;
   typedef typename FunctionType::DomainFieldType                                      DomainFieldType;
   typedef std::tuple< std::shared_ptr< typename FunctionType::LocalfunctionType >,
-                      std::shared_ptr< typename FunctionType::LocalfunctionType > > LocalfunctionTupleType;
-  static const size_t                                                               dimDomain = FunctionType::dimDomain;
+                      std::shared_ptr< typename FunctionType::LocalfunctionType > >   LocalfunctionTupleType;
+  static const size_t                                                                 dimDomain = FunctionType::dimDomain;
 
   typedef typename CellProblemType::ScalarFct                    FineFunctionType;
   typedef typename CellProblemType::PeriodicViewType             FineGridViewType;
@@ -140,7 +140,7 @@ public:
   typedef typename InclusionProblemType::CellSolutionStorageType InclusionSolutionsStorageType;
 
   typedef std::function< bool(const FineGridViewType&, const typename CellProblemType::PeriodicEntityType&) > FilterType;
-}; //class HMMHelmholtzInclusionTraits
+}; //class HMMMaxwellIdTraits
 
 
 }//namespace internal
@@ -324,7 +324,7 @@ public:
       size_t kk = 0;
       for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
         const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
-        //intergation factors
+        //integration factors
         const double integration_factor = entity.geometry().integrationElement(x);
         const double quadrature_weight = quadPointIt->weight();
         //evaluate
@@ -362,6 +362,7 @@ protected:
  * \tparan FunctionImp The macroscopic type of parameter functions
  * \tparam CellProblemType The type of cell reconstruction to use for the correctors
  * \sa HMMCurlcurl
+ * \todo reduce duplication of code from HMMCurlcurl
  */
 template< class FunctionImp, class CellProblemType >
 class HMMCurlcurlPeriodic
@@ -711,7 +712,7 @@ public:
       size_t kk = 0;
       for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
         const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
-        //intergation factors
+        //integration factors
         const double integration_factor = entity.geometry().integrationElement(x);
         const double quadrature_weight = quadPointIt->weight();
         //evaluate
@@ -761,6 +762,7 @@ protected:
  * \tparam FunctionImp Type of the macroscopic parameter function
  * \tparam CellProblemType Type of cell reconstruction for the correctors
  * \sa HMMIdentity
+ * \todo reduce duplication of code from HMMIdentity
  */
 template< class FunctionImp, class CellProblemType >
 class HMMIdentityPeriodic
@@ -871,7 +873,7 @@ public:
       size_t kk = 0;
       for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
         const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
-        //intergation factors
+        //integration factors
         const double integration_factor = entity.geometry().integrationElement(x);
         const double quadrature_weight = quadPointIt->weight();
         //evaluate
@@ -921,7 +923,7 @@ private:
 }; //class HMMIdentityPeriodic
 
 
-/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the elliptic part in the HMM
+/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the elliptic part in the HMM for periodic problems
  *
  * \tparan FunctionImp The macroscopic type of parameter functions
  * \tparam CellProblemType The type of cell reconstruction to use for the correctors
@@ -1083,7 +1085,7 @@ public:
         size_t kk = 0;
         for (auto quadPointIt = volumeQuadrature.begin(); quadPointIt != quadPointEndIt; ++quadPointIt, ++kk) {
           const Dune::FieldVector< DomainFieldType, dimDomain > x = quadPointIt->position();
-          //intergation factors
+          //integration factors
           const double integration_factor = entity.geometry().integrationElement(x);
           const double quadrature_weight = quadPointIt->weight();
           auto value = (macro_function_value * local_a->evaluate(x));
@@ -1116,7 +1118,7 @@ protected:
 }; //class HMMEllipticPeriodic
 
 
-/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the identity part in the HMM for a highly heterogeneous Helmholtz problem
+/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the identity part in the HMM for a periodic highly heterogeneous Helmholtz problem
  *
  * \tparan FunctionImp The macroscopic type of parameter functions
  * \tparam CellProblemType The type of cell reconstruction to use for the correctors
@@ -1348,7 +1350,7 @@ protected:
   const CellSolutionsStorageType& cell_solutions_;
 }; //class HMMHelmholtzInclusionPeriodic
 
-/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the identity part in the HMM for a highly heterogeneous Maxwell problem
+/** \brief Class to compute a local (w.r.t. the macroscopic grid) evaluation of the identity part in the HMM for a periodic, highly heterogeneous Maxwell problem
  *
  * \tparan FunctionImp The macroscopic type of parameter functions
  * \tparam CellProblemType The type of cell reconstruction to use for the correctors
@@ -1609,7 +1611,7 @@ public:
                                            + (correcjj_jacob_real[1][0] - correcjj_jacob_real[0][1]) * (correcii_jacob_imag[1][0] - correcii_jacob_imag[0][1]));
               tmp_result += value_real * ((correcjj_jacob_imag[2][1] - correcjj_jacob_imag[1][2]) * (correcii_jacob_real[2][1] - correcii_jacob_real[1][2])
                                            + (correcjj_jacob_imag[0][2] - correcjj_jacob_imag[2][0]) * (correcii_jacob_real[0][2] - correcii_jacob_real[2][0])
-                                           + (correcjj_jacob_imag[1][0] - correcjj_jacob_imag[0][1]) * (correcii_jacob_real[1][0] - correcii_jacob_real[0][1])); //correct sign?!
+                                           + (correcjj_jacob_imag[1][0] - correcjj_jacob_imag[0][1]) * (correcii_jacob_real[1][0] - correcii_jacob_real[0][1]));
               tmp_result -= ksquared * (correcjj_value_imag * tValue[ii]);
               tmp_result += ksquared * (aValue[jj] * correcii_value_imag);
               tmp_result += ksquared * (correcjj_value_real * correcii_value_imag);

@@ -139,7 +139,7 @@ public:
   /**
    * @brief evaluate evaluates the corrector with respect to the macroscopic variable x
    * @param xx the (local) point in which the corrector is evaluated
-   * @param ret a vector (2 items, for real and imaginary part) of (discrete) cell functions, into which the actusl corrector is evaluated
+   * @param ret a vector (2 items, for real and imaginary part) of (discrete) cell functions, into which the actual corrector is evaluated
    *
    * the method takes the macroscopic part and the cell solutions and builds the corrector from those, depeending on the type_:
    * for "curl", the curl of the macrosocpic part is multiplied (componentwise) with the correcpsonding cell solution and then summed up
@@ -195,7 +195,7 @@ private:
 }; //class PeriodicCorrectorLocal
 
 
-/** class to describe the zeroth order approximation to the heterogeneous solution, computed form the macroscopic part and its correctors of the HMM for a curl-curl-problem
+/** class to describe the zeroth order approximation to the heterogeneous solution, computed from the macroscopic part and its correctors of the HMM for a curl-curl-problem
  *
  * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM solution
  * \tparam FineFunctionCurlImp Type for corrector to the curl of the HMM solution
@@ -266,7 +266,7 @@ public:
    *
    * @param xx global point of the macroscopic computational domain
    * @param ret vector the evaluation is stored in
-   * @note only the zero'th order terms are considered, i.e. no delta * K_1 is evaluated
+   * @note only the zeroth order terms are considered, i.e. no delta * K_1 is evaluated
    */
   virtual void evaluate(const DomainType& xx, RangeType& ret) const override final
   {
@@ -434,7 +434,7 @@ private:
 };  //class DeltaCorrectorCurl
 
 
-/** class to describe the zeroth order approximation to the heterogeneous solutionfor a highly heterogeneous Helmholtz problem
+/** class to describe the zeroth order approximation to the heterogeneous solution for a highly heterogeneous Helmholtz problem
  *
  * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM solution
  * \tparam FineFunctionGradImp Type for corrector to the gradient of the HMM solution
@@ -518,7 +518,7 @@ public:
    *
    * @param xx global point of the macroscopic computational domain
    * @param ret vector the evaluation is stored in
-   * @note only the zero'th order terms are considered
+   * @note only the zeroth order terms are considered
    */
   virtual void evaluate(const DomainType& xx, RangeType& ret) const override final
   {
@@ -527,7 +527,6 @@ public:
     //tmp storage
     std::vector< RangeType > macro_total(macro_function_.size(), RangeType(0));
     bool inside_scatterer;
-    //bool outside_inclusion;
     //entity search in the macro grid view
     typedef typename CoarseFunctionImp::SpaceType::GridViewType MacroGridViewType;
     Dune::Stuff::Grid::EntityInlevelSearch< MacroGridViewType > entity_search(macro_function_[0].space().grid_view());
@@ -549,8 +548,6 @@ public:
       ret += macro_total[0];
     else if (part_ == "imag")
       ret += macro_total[1];
-    else if (part_ == "abs")
-      ret += std::sqrt(macro_total[0]*macro_total[0] + macro_total[1]*macro_total[1]);
     else
       DUNE_THROW(Dune::NotImplemented, "You can only compute real or imag part or absolute value");
     if (inside_scatterer) {
@@ -587,19 +584,12 @@ public:
         if (part_ == "real") {
           ret += wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][0]; //real*real
           if (inclusion_cell_solutions_[0].size() > 1)
-            ret -= wavenumber_ * wavenumber_ *macro_total[1] * incl_cell_evaluation[0][1]; //-imag*imag
+            ret -= wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][1]; //-imag*imag
         }
         else if (part_ == "imag") {
           ret += wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0]; //imag*real
           if (inclusion_cell_solutions_[0].size() > 1)
             ret += wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][1]; //real*imag
-        }
-        else if (part_ == "abs") {
-          ret += std::sqrt(std::pow(wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0], 2)
-                           + std::pow(wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0], 2));
-          if (inclusion_cell_solutions_[0].size() > 1)
-            ret += std::sqrt(std::pow(wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][0]-wavenumber_ * wavenumber_ *macro_total[1] * incl_cell_evaluation[0][1], 2)
-                             + std::pow(wavenumber_ * wavenumber_ * macro_total[1] * incl_cell_evaluation[0][0]+wavenumber_ * wavenumber_ * macro_total[0] * incl_cell_evaluation[0][1], 2)); 
         }
       }
     } //inside scatterer
@@ -610,7 +600,7 @@ public:
    *
    * @param xx global point of the macroscopic computational domain
    * @param ret matrix vector the evaluation is stored in
-   * @note only the zero'th order terms are considered
+   * @note only the lowest order terms are considered; does not give good results due to many jumps of the gradient
    */
   virtual void jacobian(const DomainType& xx, JacobianRangeType& ret) const override final
   {
@@ -663,8 +653,6 @@ public:
         ell_cell_jacobian(elliptic_cell_solutions_.size(), std::vector< typename FineFunctionGradImp::JacobianRangeType >(elliptic_cell_solutions_[0].size()));
       std::vector< std::vector< typename FineFunctionIdImp::JacobianRangeType > >
         incl_cell_jacobian(inclusion_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::JacobianRangeType >(inclusion_cell_solutions_[0].size()));
-     // std::vector< std::vector< typename FineFunctionIdImp::RangeType > >
-     //   incl_cell_eval(inclusion_cell_solutions_.size(), std::vector< typename FineFunctionIdImp::RangeType >(inclusion_cell_solutions_[0].size()));
       bool inside_inclusion = true;
       typedef typename FineFunctionGradImp::SpaceType::GridViewType FineGridViewType;
       Dune::Stuff::Grid::EntityInlevelSearch< FineGridViewType > entity_search_fine(elliptic_cell_solutions_[0][0].space().grid_view());
@@ -712,24 +700,19 @@ public:
           assert(inclusion_cell_solutions_.size() == 1);
           for (size_t jj = 0; jj < inclusion_cell_solutions_[0].size(); ++jj) {
             inclusion_cell_solutions_[0][jj].local_function(source_entity)->jacobian(local_source_point, incl_cell_jacobian[0][jj]);
-            //inclusion_cell_solutions_[0][jj].local_function(source_entity)->evaluate(local_source_point, incl_cell_eval[0][jj]);
           }
           if (part_ == "real") {
             ret -= macro_jacobian[0];
             ret.axpy(wavenumber_ * wavenumber_ * macro_total[0]/delta_, incl_cell_jacobian[0][0]); //real*real
-            //ret.axpy(wavenumber_ * wavenumber_ * incl_cell_eval[0][0], macro_jacobian[0]); //real*real
             if (inclusion_cell_solutions_[0].size() > 1) {
               ret.axpy(-1* wavenumber_ * wavenumber_ * macro_total[1]/delta_, incl_cell_jacobian[0][1]); //-imag*imag
-              //ret.axpy(-1* wavenumber_ * wavenumber_ * incl_cell_eval[0][1], macro_jacobian[1]); //-imag*imag
             }
           }
           else if (part_ == "imag") {
             ret -= macro_jacobian[1];
             ret.axpy(wavenumber_ * wavenumber_ * macro_total[1]/delta_,  incl_cell_jacobian[0][0]); //imag*real
-            //ret.axpy(wavenumber_ * wavenumber_ * incl_cell_eval[0][0],  macro_jacobian[1]); //imag*real
             if (inclusion_cell_solutions_[0].size() > 1) {
               ret.axpy(wavenumber_ * wavenumber_ * macro_total[0]/delta_, incl_cell_jacobian[0][1]); //real*imag
-              //ret.axpy(wavenumber_ * wavenumber_ * incl_cell_eval[0][1], macro_jacobian[0]); //real*imag
             }
           }
         }
@@ -838,7 +821,7 @@ public:
    *
    * @param xx global point of the macroscopic computational domain
    * @param ret vector the evaluation is stored in
-   * @note only the zero'th order terms are considered
+   * @note only the zeroth order terms are considered
    */
   virtual void evaluate(const DomainType& xx, RangeType& ret) const override final
   {
@@ -953,13 +936,6 @@ public:
     } //inside scatterer
   } //evaluate
 
-
-  /** @brief jacobian evaluates the zeroth order HMM approximation to the jacobian of the solution of a highly heterogeneous Maxwell scattering problem
-   *
-   * @param xx global point of the macroscopic computational domain
-   * @param ret matrix vector the evaluation is stored in
-   * @note only the zero'th order terms are considered
-   */
   virtual void jacobian(const DomainType& xx, JacobianRangeType& ret) const override final
   {
     DUNE_THROW(Dune::NotImplemented, "Jacobian not yet implemented for this corrector type");

@@ -71,7 +71,7 @@ public:
 
 
 /**
- *  \brief  Computes a product evaluation between a vector valued local l2 function and the gradients of a test space.
+ *  \brief  Computes a product evaluation between a vector-valued local L2 function and the gradients of a test space.
  */
 template< class LocalizableFunctionImp >
 class L2grad
@@ -146,7 +146,7 @@ public:
   /// \{
 
   /**
-   * \brief computes a product between a local (l2) function and the gradients of a scalar test base
+   * \brief computes a product between a local L2 function and the gradients of a scalar test base
    */
   template< class R, size_t r >
   void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& localFunction,
@@ -178,7 +178,7 @@ private:
 
 
 /**
- *  \brief  Computes a product evaluation between a scalar valued local l2 function, a constant vector of vectors and the gradients of a test space.
+ *  \brief  Computes a product evaluation between a scalar-valued local L2 function, a constant vector of vectors and the gradients of a test space.
  */
 template< class LocalizableFunctionImp, class VectorofVectors >
 class VectorL2grad
@@ -255,7 +255,7 @@ public:
   /// \{
 
   /**
-   * \brief computes a product evaluation between a scalar valued local l2 function, a constant vector and the gradients of a test space
+   * \brief computes a product evaluation between a scalar-valued local L2 function, a constant vector and the gradients of a test space
    */
   template< class R>
   void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,
@@ -289,7 +289,7 @@ private:
 
 
 /**
- *  \brief  Computes a product evaluation between a vector valued local l2 function and the curls of a test space.
+ *  \brief  Computes a product evaluation between a vector-valued local L2 function and the curls of a test space.
  */
 template< class LocalizableFunctionImp >
 class L2curl
@@ -364,7 +364,7 @@ public:
   /// \{
 
   /**
-   * \brief computes a product between a local (l2) function and the curls of a vectorial test base
+   * \brief computes a product between a local L2 function and the curls of a vectorial test base
    */
   template< class R, size_t r >
   void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, r, 1 >& localFunction,
@@ -398,7 +398,7 @@ private:
 
 
 /**
- *  \brief  Computes a product evaluation between a scalar valued local l2 function, a constant vector and the curls of a test space.
+ *  \brief  Computes a product evaluation between a scalar-valued local L2 function, a constant vector and the curls of a test space.
  */
 template< class LocalizableFunctionImp, class VectorofVectors >
 class VectorL2curl
@@ -475,7 +475,7 @@ public:
   /// \{
 
   /**
-   * \brief computes a product evaluation between a scalar valued local l2 function, a constant vector and the curls of a test space.
+   * \brief computes a product evaluation between a scalar-valued local L2 function, a constant vector and the curls of a test space.
    */
   template< class R, size_t r >
   void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,
@@ -512,7 +512,7 @@ private:
 
 
 /**
- *  \brief  Computes a product evaluation between a scalar valued local l2 function, a constant vector of vectors and a vector-valued test space.
+ *  \brief  Computes a product evaluation between a scalar-valued local L2 function, a constant vector of vectors and a vector-valued test space.
  */
 template< class LocalizableFunctionImp, class VectorofVectors >
 class VectorL2
@@ -589,7 +589,7 @@ public:
   /// \{
 
   /**
-   * \brief computes a product evaluation between a scalar valued local l2 function, a constant vector and the test space
+   * \brief computes a product evaluation between a scalar-valued local L2 function, a constant vector and the test space
    */
   template< class R, size_t r>
   void evaluate(const Stuff::LocalfunctionInterface< EntityType, DomainFieldType, dimDomain, R, 1, 1 >& localFunction,

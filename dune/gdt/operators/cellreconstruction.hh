@@ -422,7 +422,7 @@ public:
     assert(filter_);  //not empty
     system_assembler_.add(curl_assembler_, system_matrix_, new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
     system_assembler_.add(div_assembler_, system_matrix_, new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
-    //(maybe) add an identity term for stabilization
+    //add an identity term for stabilization
     system_assembler_.add(id_assembler_, system_matrix_);
   }
 
@@ -441,7 +441,7 @@ public:
   {
     system_assembler_.add(curl_assembler_, system_matrix_);
     system_assembler_.add(div_assembler_, system_matrix_);
-    //(maybe) add an identity term for stabilization
+    //add an identity term for stabilization
     system_assembler_.add(id_assembler_, system_matrix_);
   }
 
@@ -1080,6 +1080,10 @@ private:
 /** Class for the correction of the macroscopic solution itself in the curlcurl high contrast case (outside inclusions)
  * \tparam CoarseSpaceType Type of space the corrections are computed from
  * \tparam CellGridType Type of grid for the unit cube
+ *
+ * \sa IdEllipticCellReconstruction
+ * \note main difference to IdEllipticCellReconstruction is that the parameter is different (wavenumber_squared is real and constant)
+ * \todo try to merg with IdEllipticCellReconstruction
  */
 template< class CoarseSpaceType, class CellGridType >
 class IdCellReconstruction
