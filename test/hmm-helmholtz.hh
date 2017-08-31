@@ -269,10 +269,10 @@ public:
                              MacroFilterType filter_scatterer,
                              MacroFilterType filter_outside,
                              CellFilterType filter_inclusion,
-                             const CellScalarFct& stabil = CellConstFct(0.0001),
-                             const MacroScalarFct& a_diel_macro = MacroConstFct(1.0),
-                             const MacroScalarFct& a_incl_real_macro = MacroConstFct(1.0),
-                             const MacroScalarFct& a_incl_imag_macro = MacroConstFct(1.0))
+                             const CellScalarFct& stabil,
+                             const MacroScalarFct& a_diel_macro,
+                             const MacroScalarFct& a_incl_real_macro,
+                             const MacroScalarFct& a_incl_imag_macro)
     : coarse_space_(macrogridview)
     , bdry_info_(info)
     , macro_a_diel_(a_diel_macro)
@@ -522,7 +522,7 @@ public:
     DifferenceFunctionType error_imag(reference_sol[1], corrector_imag);
     //compute errors depending on type
     RangeFieldType result = 0;
-    if(type == "l2") {  //maybe weigh it with k^2
+    if(type == "l2") {
       Dune::GDT::Products::L2< typename ReferenceFunctionImp::SpaceType::GridViewType > l2_product(reference_sol[0].space().grid_view());
       result += l2_product.apply2(error_real, error_real);
       result += l2_product.apply2(error_imag, error_imag);

@@ -94,11 +94,11 @@ public:
                         const CellScalarFct& kappa_imag,
                         const MacroVectorfct& source_real,
                         const MacroVectorfct& source_imag,
-                        const CellScalarFct& divparam,// = CellConstFct(1.0),
-                        const CellScalarFct& stabil = CellConstFct(0.0001),
-                        const MacroScalarFct& mu_macro = MacroConstFct(1.0),
-                        const MacroScalarFct& kappa_real_macro = MacroConstFct(1.0),
-                        const MacroScalarFct& kappa_imag_macro = MacroConstFct(1.0),
+                        const CellScalarFct& divparam,
+                        const CellScalarFct& stabil,
+                        const MacroScalarFct& mu_macro,
+                        const MacroScalarFct& kappa_real_macro,
+                        const MacroScalarFct& kappa_imag_macro,
                         const bool is_periodic = true)
     : coarse_space_(macrogridview)
     , bdry_info_(info)
@@ -272,7 +272,7 @@ public:
 
   /**
    * @brief solve_and_correct solves the HMM problem and directly computes the (discrete) correctors
-   * @param macro_solution a vector (2 items, first for real, second for imaginary part) of DiscreteFunction (the dspace has to be given),
+   * @param macro_solution a vector (2 items, first for real, second for imaginary part) of DiscreteFunction (the space has to be given),
    *  where the macro_solution of the HMM will be saved to
    * @return a pair of PeriodicCorrector objects for the curl and identity corrector function
    */
@@ -332,7 +332,7 @@ public:
    * \tparam DiscreteMacroFctType Type for the macrosocpic part of the discrete (HMM) corrector
    * \tparam DiscreteMicroFctType Type for the discrete cell solutions of the HMm approximation
    *
-   * \note If you want to compute the error for the curl corrector, the expected_macro_oart has to be the curl of your expected analytical solution
+   * \note If you want to compute the error for the curl corrector, the expected_macro_part has to be the curl of your expected analytical solution
    */
   template< class ExpectedMacroFctType, class ExpectedMicroFctType, class DiscreteMacroFctType, class DiscreteMicroFctType >
   RangeFieldType corrector_error(std::vector< ExpectedMacroFctType >& expected_macro_part,
@@ -516,8 +516,8 @@ public:
   HelmholtzDecomp(const GridViewImp& gp,
                   const BdryInfoType& info,
                   const VectorFct& sourcereal,
-                  const VectorFct& sourceimag = ConstantVectorFct(0.0),
-                  const ScalarFct& param = ConstantFct(1.0))
+                  const VectorFct& sourceimag,
+                  const ScalarFct& param)
     : space_(gp)
     , boundary_info_(info)
     , source_real_(sourcereal)

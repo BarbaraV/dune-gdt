@@ -663,7 +663,7 @@ public:
   using BaseType::system_assembler_;
 
   IdEllipticCellReconstruction(const CoarseSpaceType& coarse_space, CellGridType& cell_grid, const ScalarFct& kappa_real, const ScalarFct& kappa_imag,
-                               const ScalarFct& idparam = Stuff::Functions::Constant< PeriodicEntityType, DomainFieldType, dimDomain, RangeFieldType, 1>(0.0001))
+                               const ScalarFct& idparam)
     : BaseType(coarse_space, cell_grid, true)
     , kappa_real_(kappa_real)
     , kappa_imag_(kappa_imag)
@@ -900,7 +900,7 @@ public:
   {
     assert(filter_);  //not empty
     system_assembler_.add(elliptic_assembler_, system_matrix_, new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
-    system_assembler_.add(id_assembler_, system_matrix_); //, new Stuff::Grid::ApplyOn::FilteredEntities< PeriodicViewType >(filter_));
+    system_assembler_.add(id_assembler_, system_matrix_); 
   }
 
   EllipticCellReconstruction(const CoarseSpaceType& coarse_space, CellGridType& cell_grid, const ScalarFct& a, const ScalarFct& idparam)

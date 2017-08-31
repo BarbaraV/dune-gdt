@@ -37,7 +37,7 @@
 
 
 
-/** \brief Class to discretize curl-curl problems only using real matrices
+/** \brief Class to discretize curl-curl problems
  *
  * Problems of the form curl(mu curl E)+kappa E= f are solved, which admit a unique solution if the complex parameter kappa has positive imaginary part.
  * The discretization uses Nedelec spaces of the first family in lowest order on simplicial grids. The functions and parameters can be complex-valued.
@@ -47,8 +47,7 @@
  *
  * \tparam GridViewType  Type of grid
  * \tparam polynomialOrder Polynomial order of the function space to be used, only polynomialOrder=1 is possible at the moment
- * \tparam MatrixImp Type of the system matrix
- * \tparam VectorImp Type of the vectors for the right hand side and the solution
+ * \tparam is_matrix_* whether the coefficient in operator * (*=curl or id) is matrix_valued, default=false
  */
 
 template< class GridViewType, int polynomialOrder,
@@ -115,7 +114,7 @@ public:
     return space_;
   }
 
-  VectorType create_vector() const   //oder besser VectorTypeComplex?
+  VectorType create_vector() const
   {
     return VectorType(space_.mapper().size());
   }
@@ -129,7 +128,7 @@ public:
       Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_volume_pattern();
       system_matrix_real_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
       system_matrix_imag_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
-      system_matrix_total_ = MatrixTypeComplex(space_.mapper().size(), space_.mapper().size()); //,sparsity_pattern);
+      system_matrix_total_ = MatrixTypeComplex(space_.mapper().size(), space_.mapper().size());
       rhs_vector_real_ = VectorType(space_.mapper().size());
       rhs_vector_imag_ = VectorType(space_.mapper().size());
       rhs_vector_total_ = VectorTypeComplex(space_.mapper().size());
@@ -322,7 +321,7 @@ public:
     return space_;
   }
 
-  VectorType create_vector() const   //oder besser VectorTypeComplex?
+  VectorType create_vector() const
   {
     return VectorType(space_.mapper().size());
   }

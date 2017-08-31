@@ -870,11 +870,11 @@ public:
 
   /** \brief computes the error between a reference solution (to the heterogeneous problem, on a fine grid) to the HMM approximation
    *
-   * the HMM approximation is turned into a \ref DeltaCorrectorHelmholtz and the L2 or H1 seminorms can be requested
+   * the HMM approximation is turned into a \ref DeltaCorrectorMaxwell and the L2 norm can be requested
    * \tparam ReferenceFunctionImp Type for the discrete reference solution
    * \tparam CoarseFunctionImp Type for the macroscopic part of the HMM approximation
    * \tparam CurlCellFunctionImp Type for the solutions to the cell problem for the curl
-   * \tparam CurlCellFunctionImp Type for the solutions to the cell problem for the identity outside the inclusions
+   * \tparam IdCellFunctionImp Type for the solutions to the cell problem for the identity outside the inclusions
    * \tparam InclusionCellFunctionImp Type for the solutions to the cell problem for the identity part in the inclusions
    */
   template< class ReferenceFunctionImp, class CoarseFunctionImp, class CurlCellFunctionImp, class IdCellFunctionImp, class InclusionCellFunctionImp >
@@ -896,7 +896,7 @@ public:
     DifferenceFunctionType error_imag(reference_sol[1], corrector_imag);
     //compute errors depending on type
     RangeFieldType result = 0;
-    if(type == "l2") {  //maybe weigh it with k^2
+    if(type == "l2") {
       Dune::GDT::Products::L2< typename ReferenceFunctionImp::SpaceType::GridViewType > l2_product(reference_sol[0].space().grid_view());
       result += l2_product.apply2(error_real, error_real);
       result += l2_product.apply2(error_imag, error_imag);

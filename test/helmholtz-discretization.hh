@@ -104,7 +104,7 @@ public:
     return space_;
   }
 
-  VectorType create_vector() const   //oder besser VectorTypeComplex?
+  VectorType create_vector() const
   {
     return VectorType(space_.mapper().size());
   }
