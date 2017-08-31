@@ -728,7 +728,6 @@ public:
 
       //lhs outside scatterer
       MacroConstFct one(1.0);
-      //std::cout<< "watch out: diffusion_param outside scatterer is not 1.0!!!!"<<std::endl;
       assert(filter_outside_);
       typedef GDT::Operators::CurlCurl< MacroConstFct, RealMatrixType, SpaceType > CurlOperatorType;
       CurlOperatorType curl_operator_real(one, system_matrix_real_, coarse_space_);
@@ -791,12 +790,13 @@ public:
     return rhs_vector_;
   }
 
-  void solve(VectorType& solution) const
+  void solve(VectorType& solution,
+             const Dune::Stuff::Common::Configuration& options = Dune::Stuff::LA::Solver< MatrixType >::options("bicgstab.diagonal")) const
   {
     if (!is_assembled_)
       assemble();
     Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+    solver.apply(rhs_vector_, solution, options);
   }
 
   /**
@@ -808,13 +808,14 @@ public:
   std::tuple< Dune::GDT::PeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >,
               Dune::GDT::PeriodicCorrector< DiscreteFunctionType, IdCellDiscreteFctType >,
               Dune::GDT::PeriodicCorrector< DiscreteFunctionType, InclusionCellDiscreteFctType> >
-    solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution)
+    solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution,
+                      const Dune::Stuff::Common::Configuration& options = Dune::Stuff::LA::Solver< MatrixType >::options("bicgstab.diagonal"))
   {
     if (!is_assembled_)
       assemble();
     VectorType solution(coarse_space_.mapper().size());
     Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+    solver.apply(rhs_vector_, solution, options);
     //get real and imaginary part and make discrete functions
     RealVectorType solution_real(coarse_space_.mapper().size());
     RealVectorType solution_imag(coarse_space_.mapper().size());

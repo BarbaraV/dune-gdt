@@ -261,12 +261,13 @@ public:
     return rhs_vector_;
   }
 
-  void solve(VectorType& solution) const
+  void solve(VectorType& solution,
+             const Dune::Stuff::Common::Configuration& options = Dune::Stuff::LA::Solver< MatrixType >::options("bicgstab.diagonal")) const
   {
     if (!is_assembled_)
       assemble();
     Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(rhs_vector_, solution, "bicgstab.diagonal");
+    solver.apply(rhs_vector_, solution, options);
   }
 
   /**
@@ -276,18 +277,15 @@ public:
    * @return a pair of PeriodicCorrector objects for the curl and identity corrector function
    */
   std::pair< Dune::GDT::PeriodicCorrector< DiscreteFunctionType, CurlCellDiscreteFctType >, Dune::GDT::PeriodicCorrector< DiscreteFunctionType, EllCellDiscreteFctType > >
-    solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution)
+    solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution,
+                      const Dune::Stuff::Common::Configuration& options = Dune::Stuff::LA::Solver< MatrixType >::options("bicgstab.diagonal"))
   {
     if(!is_periodic_)
       DUNE_THROW(Dune::NotImplemented, "Computation of correctors for non-periodic HMM not implemented yet");
     if (!is_assembled_)
       assemble();
     VectorType solution(coarse_space_.mapper().size());
-    typedef Dune::Stuff::LA::Solver< MatrixType > SolverType;
-    Dune::Stuff::Common::Configuration options = SolverType::options("bicgstab.diagonal");
-    options.set("max_iter", "250000", true);
-    options.set("precision", "1e-6", true);
-    SolverType solver(system_matrix_);
+    Dune::Stuff::LA::Solver< MatrixType > solver(system_matrix_);
     solver.apply(rhs_vector_, solution, options);
     //get real and imaginary part and make discrete functions
     RealVectorType solution_real(coarse_space_.mapper().size());
@@ -612,16 +610,14 @@ public:
     return rhs_vector_total_;
   }
 
-  void solve(VectorTypeComplex& solution) const
+  void solve(VectorTypeComplex& solution,
+             const Dune::Stuff::Common::Configuration& options = Dune::Stuff::LA::Solver< MatrixTypeComplex >::options("bicgstab.diagonal")) const
   {
     if(!is_assembled_)
       assemble();
-
-    // instantiate solver and options
-    typedef Dune::Stuff::LA::Solver< MatrixTypeComplex > SolverType;
-    SolverType solver(system_matrix_complex_);
-    //solve
-    solver.apply(rhs_vector_total_, solution, "bicgstab.diagonal");
+    // solve
+    Dune::Stuff::LA::Solver< MatrixTypeComplex > solver(system_matrix_complex_);
+    solver.apply(rhs_vector_total_, solution, options);
   } //solve()
 
 

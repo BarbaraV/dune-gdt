@@ -202,16 +202,14 @@ public:
     return rhs_vector_total_;
   }
 
-  void solve(VectorTypeComplex& solution) const
+  void solve(VectorTypeComplex& solution,
+             const Dune::Stuff::Common::Configuration& options = Dune::Stuff::LA::Solver< MatrixTypeComplex >::options("bicgstab.diagonal")) const
   {
     if(!is_assembled_)
       assemble();
-
-    // instantiate solver and options
-    typedef Dune::Stuff::LA::Solver< MatrixTypeComplex > SolverType;
-    SolverType solver(system_matrix_total_);
-    //solve
-    solver.apply(rhs_vector_total_, solution, "bicgstab.diagonal");
+    // solve
+    Dune::Stuff::LA::Solver< MatrixTypeComplex > solver(system_matrix_total_);
+    solver.apply(rhs_vector_total_, solution, options);
   } //solve()
 
   void visualize(const VectorTypeComplex& vector, const std::string filename, const std::string name) const
