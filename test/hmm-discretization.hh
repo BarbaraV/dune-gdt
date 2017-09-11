@@ -510,7 +510,7 @@ public:
   typedef Dune::Stuff::LA::Container< std::complex< double >, Dune::Stuff::LA::ChooseBackend::eigen_sparse>::VectorType VectorTypeComplex;
 
   typedef Dune::GDT::Spaces::CG::PdelabBased< GridViewImp, polOrder, double, 1 > SpaceType;
-  typedef Dune::GDT::ConstDiscreteFunction< SpaceType, VectorType > DiscreteFctType;
+  typedef Dune::GDT::DiscreteFunction< SpaceType, VectorType >                   DiscreteFctType;
 
 
   HelmholtzDecomp(const GridViewImp& gp,
