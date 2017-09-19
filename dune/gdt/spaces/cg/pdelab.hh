@@ -252,8 +252,7 @@ class PdelabBased< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 >
 {
   typedef Spaces::CGInterface< PdelabBasedTraits< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 >,
                                GridViewImp::dimension, rangeDim, 1 >              BaseType;
-  typedef Spaces::CGInterface< PdelabBasedTraits< GridViewImp, polynomialOrder, RangeFieldImp, 1, 1 >,
-                               GridViewImp::dimension, 1, 1 >                     ScalarBaseType;
+  typedef PdelabBased< GridViewImp, polynomialOrder, RangeFieldImp, 1, 1 >        ScalarType;
   typedef PdelabBased< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 > ThisType;
 public:
   typedef PdelabBasedTraits< GridViewImp, polynomialOrder, RangeFieldImp, rangeDim, 1 > Traits;
@@ -343,13 +342,14 @@ public:
 
   std::vector< DomainType > lagrange_points(const EntityType& entity) const
   {
-    return ScalarBaseType::lagrange_points_order_1(entity);  //should do the right thing
+    ScalarType scalar_space(gridView_); 
+    return scalar_space.lagrange_points_order_1(entity);  //should do the right thing
   }
 
   std::set< size_t > local_dirichlet_DoFs(const EntityType& entity,
                                           const BoundaryInfoType& boundaryInfo) const
   {
-    return BaseType::local_dirichlet_DoFs_order_1(entity, boundaryInfo);  //throws a Dune_Not_Implemented atm
+    DUNE_THROW(NotImplemented, "Does not work for higher dimensions");
   }
 
   BaseFunctionSetType base_function_set(const EntityType& entity) const
