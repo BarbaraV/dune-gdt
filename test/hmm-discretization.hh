@@ -280,8 +280,8 @@ public:
     solve_and_correct(std::vector< DiscreteFunctionType >& macro_solution,
                       const Dune::Stuff::Common::Configuration& options = Dune::Stuff::LA::Solver< MatrixType >::options("bicgstab.diagonal"))
   {
-    if(!is_periodic_)
-      DUNE_THROW(Dune::NotImplemented, "Computation of correctors for non-periodic HMM not implemented yet");
+    //if(!is_periodic_)
+     // DUNE_THROW(Dune::NotImplemented, "Computation of correctors for non-periodic HMM not implemented yet");
     if (!is_assembled_)
       assemble();
     VectorType solution(coarse_space_.mapper().size());

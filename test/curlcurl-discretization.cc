@@ -277,15 +277,11 @@ int main(int argc, char** argv) {
 */
 
   //========================================================================================================================================================================
-  // Test Case 1b: Comparison between discrete reference solution of the heterogenous problem and the HMM approximation
-  // three different values have been tested: 1/3, 1/5, 1/7; comment out the respective line
+  // Test Case 1b: Comparison between discrete reference solution of the heterogenous problem and the HMM approximation for delta=0.2
+  // test produces also visualization of HMM lowest order approximation for delta=0.3, 0.2, 0.1
   //========================================================================================================================================================================
 
-  double delta;
-  //choose delta by commenting out the corresponding line
-  //delta = 1.0/3.0;
-  delta = 1.0/5.0;
-  //delta = 1.0/7.0;
+  double delta = 0.2;
   const LambdaFct hetepdelta([delta](LambdaFct::DomainType x)
                              {return 1.0/(2+std::cos(2*M_PI*x[0]/delta));},0);
   const LambdaFct hetkappa_real_delta([delta](LambdaFct::DomainType x)
@@ -298,7 +294,7 @@ int main(int argc, char** argv) {
   Stuff::Grid::Providers::Cube< GridType > grid_provider(0.0, 1.0, num_ref_cubes);
   auto ref_leafView = grid_provider.grid().leafGridView();
 
-  std::ofstream output("output_hmmcurl_analytical_referror"+std::to_string(int(num_ref_cubes))+"delta"+std::to_string(int(1/delta))+".txt");
+  std::ofstream output("output_hmmcurl_analytical_referror"+std::to_string(int(num_ref_cubes))+"_delta"+std::to_string(int(1/delta))+".txt");
   try{
     //reference solution
     Dune::Stuff::LA::Container< complextype >::VectorType sol_ref;
@@ -382,8 +378,12 @@ int main(int argc, char** argv) {
       //visualization
       if (num_macro_cubes == 12) {
         typedef Dune::GDT::DeltaCorrectorCurl< CurlHMMType::DiscreteFunctionType, CurlHMMType::CurlCellDiscreteFctType, CurlHMMType::EllCellDiscreteFctType > DeltaCorrectorType;
-        DeltaCorrectorType corrector_real(correctors.first.macro_function(), correctors.first.cell_solutions(), correctors.second.cell_solutions(), delta, "real");
-        corrector_real.visualize(macro_leafView, "delta_corrector_delta"+std::to_string(int(1/delta))+"_"+std::to_string(int(num_macro_cubes))+"_real", false);
+        //choose the delta's you wnat to visualize by adding the values into the for loop
+        for (double delta1 : {0.3, 0.2, 0.15}) {
+          DeltaCorrectorType corrector_real(correctors.first.macro_function(), correctors.first.cell_solutions(), correctors.second.cell_solutions(), delta1, "real");
+          std::cout<< "visualization for delta "<< delta1 <<std::endl;
+          corrector_real.visualize(macro_leafView, "delta_corrector_delta0"+std::to_string(int(100*delta1))+"_"+std::to_string(int(num_macro_cubes))+"_real", false);
+        }
       }
 
     }//end for loop
@@ -409,6 +409,14 @@ int main(int argc, char** argv) {
   const VectorFct freal(30.0);
   //boundary
   DSG::BoundaryInfos::AllDirichlet< LeafGridView::Intersection > curl_bdry_info;
+
+  double delta = 1.0/3.0;
+  const LambdaFct hetmu([delta](LambdaFct::DomainType x)
+                        {return 20/((2+1.5*std::sin(2*M_PI*x[0]/delta+0.75))*(2+1.5*std::sin(2*M_PI*x[1]/delta+0.75))*(2+1.5*std::sin(2*M_PI*x[2]/delta+0.75)));}, 0);
+
+  //==========================================================================================================================================================
+  //  TestCase 2: Comparison of the HMM approximation to a) the reference homogenized solution and b) the reference solution with delta=1/3
+  //==========================================================================================================================================================
 
   //reference grid
   unsigned int num_ref_cubes = 24;
@@ -440,7 +448,8 @@ int main(int argc, char** argv) {
     homdiscr.assemble();
     std::cout<<"solving with bicgstab.diagonal"<<std::endl;
     Dune::Stuff::Common::Configuration hom_options = HMMSolverType::options("bicgstab.diagonal");
-    hom_options.set("max_iter", "100000", true);
+    hom_options.set("precision", "1e-6", true);
+    hom_options.set("max_iter", "200000", true);
     homdiscr.solve(sol_hom_ref, hom_options);
     } //end anonymous space just for memory reasons
 
@@ -449,91 +458,6 @@ int main(int argc, char** argv) {
     std::vector< DiscreteFctType > sol_hom_ref_func(2, DiscreteFctType(SpaceType(ref_leafView), solhom_real_ref));
     sol_hom_ref_func[0].vector().backend() = sol_hom_ref.backend().real();
     sol_hom_ref_func[1].vector().backend() = sol_hom_ref.backend().imag();
-    sol_hom_ref_func[0].visualize("ref_homogenized_solution"+std::to_string(int(num_ref_cubes)));
-*/
-  //==========================================================================================================================================================
-  //  TestCase 2a: Comparison of the HMM approximation to the reference homogenized solution
-  //==========================================================================================================================================================
-/*
-    std::ofstream output("hmmcurl_CZAL_homerror_"+std::to_string(int(num_ref_cubes))+".txt");
-    output << "num_macro_cubes" << "\t" << "L2 norm" << "\t" << "Hcurl semi norm" << "\t" << "L2 Helmholtz" << "\n";
-
-    for(unsigned int num_macro_cubes : {4, 6, 8, 12}) {
-      //macro grid
-      Stuff::Grid::Providers::Cube< GridType > macro_grid_provider(0.0, 1.0, num_macro_cubes);
-      auto macro_leafView = macro_grid_provider.grid().leafGridView();
-      //micro grid
-      unsigned int num_micro_cubes = num_macro_cubes/2;
-      Stuff::Grid::Providers::Cube< GridType > cell_grid_provider(0.0, 1.0, num_micro_cubes);
-      auto& cell_grid = cell_grid_provider.grid();
-
-      //HMM
-      CurlHMMType curlHMM(macro_leafView, cell_grid, curl_bdry_info, muperiodic, minusone, zero, freal, zerovec, divparam, stabil, one, one, zero);
-      std::cout<< "hmm assembly for " << num_macro_cubes << " cubes per dim on macro grid and "<< num_micro_cubes << " cubes per dim on the micro grid" << std::endl;
-      curlHMM.assemble();
-      std::cout<< "hmm solving with biCGstab.diagonal" <<std::endl;
-      CurlHMMType::VectorType sol_hmm;
-      curlHMM.solve(sol_hmm);
-
-      //make discrete functions
-      CurlHMMType::RealVectorType solreal_hmm(sol_hmm.size());
-      DiscreteFctType macro_sol(curlHMM.space(), solreal_hmm);
-      std::vector< DiscreteFctType > macro_solution(2, macro_sol);  
-      macro_solution[0].vector().backend() = sol_hmm.backend().real();
-      macro_solution[1].vector().backend() = sol_hmm.backend().imag();
-
-      //visualization
-      if(num_macro_cubes == 12){
-        macro_solution[0].visualize("hmm_solution_"+std::to_string(int(num_macro_cubes))+"_"+std::to_string(int(num_micro_cubes))+"_real");
-      }
-
-      //error to reference homogenized solution
-      std::cout<< "computing errors to homogenized reference solution" <<std::endl;
-      ProlongedDiscrFct prolonged_ref_real(macro_solution[0], ref_leafView);
-      ProlongedDiscrFct prolonged_ref_imag(macro_solution[1], ref_leafView);
-      RefDifferenceFct hom_reference_error_real(sol_hom_ref_func[0], prolonged_ref_real);
-      RefDifferenceFct hom_reference_error_imag(sol_hom_ref_func[1], prolonged_ref_imag);
-      Dune::GDT::Products::L2< LeafGridView > l2_product_operator_hom(ref_leafView);
-      Dune::GDT::Products::HcurlSemi< LeafGridView > hcurl_product_operator_hom(ref_leafView);
-      const double l2 = std::sqrt(l2_product_operator_hom.apply2(hom_reference_error_real, hom_reference_error_real)
-                                        + l2_product_operator_hom.apply2(hom_reference_error_imag, hom_reference_error_imag));
-      const double hcurl_semi = std::sqrt(hcurl_product_operator_hom.apply2(hom_reference_error_real, hom_reference_error_real)
-                                            + hcurl_product_operator_hom.apply2(hom_reference_error_imag, hom_reference_error_imag));
-      std::cout<< "L2 error: " << l2 <<std::endl;
-      std::cout<< "Hcurl seminorm "<< hcurl_semi <<std::endl;
-
-      //Helmholtz decomposition of the error
-      Dune::Stuff::LA::Container< complextype >::VectorType sol_helmholtz_hom;
-      std::cout<< "computing Helmholtz decomposition" <<std::endl;
-      HelmholtzDecomp< LeafGridView, 1 > decomp_hom(ref_leafView, curl_bdry_info, hom_reference_error_real, hom_reference_error_imag, one);
-      decomp_hom.solve(sol_helmholtz_hom);
-      //make discrete fct
-      Stuff::LA::Container< double >::VectorType decomp_hom_vec_real(sol_helmholtz_hom.size());
-      typedef HelmholtzDecomp< LeafGridView, 1 >::DiscreteFctType DiscreteFctHelmh;
-      DiscreteFctHelmh phi_hom_real(decomp_hom.space(), decomp_hom_vec_real);
-      std::vector< DiscreteFctHelmh > phi_hom(2, phi_hom_real);
-      phi_hom[0].vector().backend() = sol_helmholtz_hom.backend().real();
-      phi_hom[1].vector().backend() = sol_helmholtz_hom.backend().imag();
-      //compute error of Helmholtz decomposition
-      const double helmholtz_error = std::sqrt(l2_product_operator_hom.apply2(phi_hom[0], phi_hom[0]) + l2_product_operator_hom.apply2(phi_hom[1], phi_hom[1]));
-      std::cout<< "L2 error of gradient part in Helmholtz decomposition (on the reference grid): "<< helmholtz_error << std::endl;
-
-      output<< num_macro_cubes << "\t" << l2 << "\t" << hcurl_semi << "\t" << helmholtz_error << "\n";
-    }//end for loop
-  }//end try block
-*/
-  
-  //============================================================================================================================================================
-  //  TestCase 2b: Comparison between the HMM approximation and the reference heterogeneous solution
-  //============================================================================================================================================================
-
-/*
-    double delta;
-    delta = 1.0/3.0;
-    const LambdaFct hetmu([delta](LambdaFct::DomainType x)
-                          {return 20/((2+1.5*std::sin(2*M_PI*x[0]/delta+0.75))*(2+1.5*std::sin(2*M_PI*x[1]/delta+0.75))*(2+1.5*std::sin(2*M_PI*x[2]/delta+0.75)));}, 0);
-  
-    std::ofstream output("output_hmmcurl_CZAL_referror_delta"+std::to_string(int(1/delta))+"_"+std::to_string(int(num_ref_cubes))+".txt");
 
     //reference solution
     Dune::Stuff::LA::Container< complextype >::VectorType sol_ref;
@@ -545,7 +469,8 @@ int main(int argc, char** argv) {
     refdiscr.assemble();
     std::cout<< "solving with bicgstab.diagonal" <<std::endl;
     Dune::Stuff::Common::Configuration options = HMMSolverType::options("bicgstab.diagonal");
-    options.set("max_iter", "200000", true);
+    options.set("max_iter", "500000", true);
+    options.set("precision", "1e-6", true);
     refdiscr.solve(sol_ref, options);
     }
     //make discrete functions
@@ -557,6 +482,7 @@ int main(int argc, char** argv) {
                                                  DiscreteFctType(SpaceType(ref_leafView), solrefimag)});
     sol_ref_func[0].visualize("ref_discrete_solution_delta"+std::to_string(int(1/delta))+"_"+std::to_string(int(num_ref_cubes)));
 
+    std::ofstream output("output_hmmcurl_CZAL_error"+std::to_string(int(num_ref_cubes))+"_delta"+std::to_string(int(1/delta))+".txt");
     //error reference and analytical solution
     {
     typedef Stuff::Functions::Difference< DiscreteFctType, DiscreteFctType > DiscrDifferenceFct;
@@ -569,7 +495,8 @@ int main(int argc, char** argv) {
     const double abserror_l2 = std::sqrt(l2_product_operator_macro.apply2(error_real, error_real) + l2_product_operator_macro.apply2(error_imag, error_imag));
     const double abserror_curl_full = std::sqrt(std::pow(abserror_l2, 2) + std::pow(abserror_curl, 2));
     output << "homogenization error" << "\n" << "Hcurl:"<< "\t" << abserror_curl_full << "\t" << "L2:" << "\t" << abserror_l2 << "\n" << "\n";
-    output << "errors reference solution to HMM" << "\n" << "num_macro_cubes" << "\t" << "L2" << "\t" << "Hcurlsemi" << "\t" << "Hcurl semi corrector" << "\n";
+    output << "errors reference solutions to HMM" << "\n" << "num_macro_cubes" << "\t" << "L2 hom" << "\t" << "Hcurl semi hom" << "\t" << "L2 Helmholtz hom" 
+                                                  << "\t" << "L2ref" << "\t" << "Hcurl semi ref" <<"\t" << "Hcurl semi correc" << "\t" << "L2 Helmholtz ref" << "\n";
     }
 
     for(unsigned int num_macro_cubes : {4, 6, 8, 12}) {
@@ -582,46 +509,75 @@ int main(int argc, char** argv) {
       auto& cell_grid = cell_grid_provider.grid();
 
       //HMM
-      CurlHMMType curlHMM(macro_leafView, cell_grid, curl_bdry_info, muperiodic, minusone, zero, freal, zerovec, divparam, stabil, one, one, zero);
+      CurlHMMType curlHMM(macro_leafView, cell_grid, curl_bdry_info, muperiodic, minusone, zero, freal, zerovec, divparam, stabil, one, one, zero, false);
       std::cout<< "hmm assembly for " << num_macro_cubes << " cubes per dim on macro grid and "<< num_micro_cubes << " cubes per dim on the micro grid" << std::endl;
       curlHMM.assemble();
 
       std::cout<< "hmm solving and corrector computation" <<std::endl;
       CurlHMMType::RealVectorType solreal_hmm;
+      Dune::Stuff::Common::Configuration hmm_options = HMMSolverType::options("lu.sparse");
       DiscreteFctType macro_sol(curlHMM.space(), solreal_hmm);
       std::vector< DiscreteFctType > macro_solution(2, macro_sol);
       typedef Dune::GDT::PeriodicCorrector< CurlHMMType::DiscreteFunctionType, CurlHMMType::CurlCellDiscreteFctType > CurlCorrectorType;
       typedef Dune::GDT::PeriodicCorrector< CurlHMMType::DiscreteFunctionType, CurlHMMType::EllCellDiscreteFctType > IdCorrectorType;
-      std::pair< CurlCorrectorType, IdCorrectorType > correctors(curlHMM.solve_and_correct(macro_solution));
+      std::pair< CurlCorrectorType, IdCorrectorType > correctors(curlHMM.solve_and_correct(macro_solution, hmm_options));
 
-      //error to reference solution
+      //define errors
       ProlongedDiscrFct prolonged_ref_real(macro_solution[0], ref_leafView);
       ProlongedDiscrFct prolonged_ref_imag(macro_solution[1], ref_leafView);
+      RefDifferenceFct hom_reference_error_real(sol_hom_ref_func[0], prolonged_ref_real);
+      RefDifferenceFct hom_reference_error_imag(sol_hom_ref_func[1], prolonged_ref_imag);
       RefDifferenceFct reference_error_real(sol_ref_func[0], prolonged_ref_real);
       RefDifferenceFct reference_error_imag(sol_ref_func[1], prolonged_ref_imag);
 
-      std::cout<< "macroscopic errors on reference grid"<<std::endl;
-      Dune::GDT::Products::L2< LeafGridView > l2_product_operator_ref(ref_leafView);
-      Dune::GDT::Products::HcurlSemi< LeafGridView > curl_product_operator_ref(ref_leafView);
-      const double l2 = std::sqrt(l2_product_operator_ref.apply2(reference_error_real, reference_error_real)
-                                          + l2_product_operator_ref.apply2(reference_error_imag, reference_error_imag));
-      const double hcurl_semi = std::sqrt(curl_product_operator_ref.apply2(reference_error_real, reference_error_real)
-                                              + curl_product_operator_ref.apply2(reference_error_imag, reference_error_imag));
-      std::cout<< "L2 error: " << l2 <<std::endl;
-      std::cout<< "Hcurl seminorm "<< hcurl_semi <<std::endl;
-      std::cout<< "error to zeroth order approximation" <<std::endl;
-      const double hcurl_semi_correc = curlHMM.reference_error(sol_ref_func, correctors.first, correctors.second, delta, "hcurlsemi");
-      std::cout<< "Hcurl seminorm: "<< hcurl_semi_correc <<std::endl;
+      Dune::GDT::Products::L2< LeafGridView > l2_product_operator(ref_leafView);
+      Dune::GDT::Products::HcurlSemi< LeafGridView > hcurl_product_operator(ref_leafView);
 
-      output<< num_macro_cubes << "\t" << l2 << "\t" << hcurl_semi << "\t" << hcurl_semi_correc << "\n";
+      //error to reference homogenized solution
+      std::cout<< "computing errors to homogenized reference solution" <<std::endl;
+      const double l2_hom = std::sqrt(l2_product_operator.apply2(hom_reference_error_real, hom_reference_error_real)
+                                        + l2_product_operator.apply2(hom_reference_error_imag, hom_reference_error_imag));
+      const double hcurl_semi_hom = std::sqrt(hcurl_product_operator.apply2(hom_reference_error_real, hom_reference_error_real)
+                                            + hcurl_product_operator.apply2(hom_reference_error_imag, hom_reference_error_imag));
+
+      //error to (heterogeneous) reference solution
+      std::cout<< "macroscopic errors on reference grid"<<std::endl;
+      const double l2_ref = std::sqrt(l2_product_operator.apply2(reference_error_real, reference_error_real)
+                                          + l2_product_operator.apply2(reference_error_imag, reference_error_imag));
+      const double hcurl_semi_ref = std::sqrt(hcurl_product_operator.apply2(reference_error_real, reference_error_real)
+                                              + hcurl_product_operator.apply2(reference_error_imag, reference_error_imag));
+      std::cout<< "errors to zeroth order approximation" <<std::endl;
+      const double hcurl_semi_correc = curlHMM.reference_error(sol_ref_func, correctors.first, correctors.second, delta, "hcurlsemi");
+
+      //Helmholtz decomposition of the errors
+      Dune::Stuff::LA::Container< complextype >::VectorType sol_helmholtz_hom;
+      Dune::Stuff::LA::Container< complextype >::VectorType sol_helmholtz_ref;
+      std::cout<< "computing Helmholtz decompositions" <<std::endl;
+      HelmholtzDecomp< LeafGridView, 1 > decomp_hom(ref_leafView, curl_bdry_info, hom_reference_error_real, hom_reference_error_imag, one);
+      HelmholtzDecomp< LeafGridView, 1 > decomp_ref(ref_leafView, curl_bdry_info, reference_error_real, reference_error_imag, one);
+      decomp_hom.solve(sol_helmholtz_hom);
+      decomp_ref.solve(sol_helmholtz_ref);
+      //make discrete fcts
+      Stuff::LA::Container< double >::VectorType decomp_hom_vec_real(sol_helmholtz_hom.size());
+      typedef HelmholtzDecomp< LeafGridView, 1 >::DiscreteFctType DiscreteFctHelmh;
+      DiscreteFctHelmh phi_hom_real(decomp_hom.space(), decomp_hom_vec_real);
+      std::vector< DiscreteFctHelmh > phi_hom(2, phi_hom_real);
+      std::vector< DiscreteFctHelmh > phi_ref(2, phi_hom_real);
+      phi_hom[0].vector().backend() = sol_helmholtz_hom.backend().real();
+      phi_hom[1].vector().backend() = sol_helmholtz_hom.backend().imag();
+      phi_ref[0].vector().backend() = sol_helmholtz_ref.backend().real();
+      phi_ref[1].vector().backend() = sol_helmholtz_ref.backend().imag();
+      //compute errors of Helmholtz decomposition
+      const double helmholtz_error_hom = std::sqrt(l2_product_operator.apply2(phi_hom[0], phi_hom[0]) + l2_product_operator.apply2(phi_hom[1], phi_hom[1]));
+      const double helmholtz_error_ref = std::sqrt(l2_product_operator.apply2(phi_ref[0], phi_ref[0]) + l2_product_operator.apply2(phi_ref[1], phi_ref[1]));
+
+      output<< num_macro_cubes << "\t" << l2_hom << "\t" << hcurl_semi_hom << "\t" << helmholtz_error_hom
+                               << "\t" << l2_ref << "\t" << hcurl_semi_ref << "\t" << hcurl_semi_correc << "\t" << helmholtz_error_ref << "\n";
 
       //visualization
-      if (num_macro_cubes == 12) {
-        typedef Dune::GDT::DeltaCorrectorCurl< CurlHMMType::DiscreteFunctionType, CurlHMMType::CurlCellDiscreteFctType, CurlHMMType::EllCellDiscreteFctType > DeltaCorrectorType;
-        DeltaCorrectorType corrector_real(correctors.first.macro_function(), correctors.first.cell_solutions(), correctors.second.cell_solutions(), delta, "real");
-        corrector_real.visualize(macro_leafView, "delta_corrector_delta"+std::to_string(int(1/delta))+"_"+std::to_string(int(num_macro_cubes))+"_real", false);
+      if(num_macro_cubes == 12){
+        macro_solution[0].visualize("hmm_solution_"+std::to_string(int(num_macro_cubes))+"_"+std::to_string(int(num_micro_cubes))+"_real");
       }
-
     }//end for loop
   }//end try block
 */
