@@ -512,33 +512,45 @@ double b11 = 1.0;
 double b12 = 1.0;
 if (xx[0]>=d_left && xx[0] <= d_right ) {
   b1 = std::min(std::sqrt(std::pow(xx[1]-d_left, 2) + std::pow(xx[2]-d_left, 2)), radius)/radius;
-  b1 /= (a1 * a5);
+  if (a1*a5 != 0)
+    b1 /= (a1 * a5);
   b2 = std::min(std::sqrt(std::pow(xx[1]-d_left, 2) + std::pow(xx[2]-d_right, 2)), radius)/radius;
-  b2 /= (a2 * a6);
+  if (a2*a6 != 0)
+    b2 /= (a2 * a6);
   b3 = std::min(std::sqrt(std::pow(xx[1]-d_right, 2) + std::pow(xx[2]-d_left, 2)), radius)/radius;
-  b3 /= (a3 * a7);
+  if (a3*a7 != 0)
+    b3 /= (a3 * a7);
   b4 = std::min(std::sqrt(std::pow(xx[1]-d_right, 2) + std::pow(xx[2]-d_right, 2)), radius)/radius;
-  b4 /= (a4 * a8);
+  if (a4*a8 != 0)
+    b4 /= (a4 * a8);
 }
 if (xx[1]>=d_left && xx[1] <= d_right ) {
   b5 = std::min(std::sqrt(std::pow(xx[0]-d_left, 2) + std::pow(xx[2]-d_left, 2)), radius)/radius;
-  b5 /= (a1 * a3);
+  if (a1*a3 != 0)
+    b5 /= (a1 * a3);
   b6 = std::min(std::sqrt(std::pow(xx[0]-d_left, 2) + std::pow(xx[2]-d_right, 2)), radius)/radius;
-  b6 /= (a2 * a4);
+  if (a2*a4 != 0)
+    b6 /= (a2 * a4);
   b7 = std::min(std::sqrt(std::pow(xx[0]-d_right, 2) + std::pow(xx[2]-d_left, 2)), radius)/radius;
-  b7 /= (a5 * a7);
+  if (a5*a7 != 0)
+    b7 /= (a5 * a7);
   b8 = std::min(std::sqrt(std::pow(xx[0]-d_right, 2) + std::pow(xx[2]-d_right, 2)), radius)/radius;
-  b8 /= (a6 * a8);
+  if (a6*a8 != 0)
+    b8 /= (a6 * a8);
 }
 if (xx[2]>=d_left && xx[2] <= d_right ) {
   b9 = std::min(std::sqrt(std::pow(xx[1]-d_left, 2) + std::pow(xx[0]-d_left, 2)), radius)/radius;
-  b9 /= (a1 * a2);
+  if (a1*a2 != 0)
+    b9 /= (a1 * a2);
   b10 = std::min(std::sqrt(std::pow(xx[1]-d_left, 2) + std::pow(xx[0]-d_right, 2)), radius)/radius;
-  b10 /= (a5 * a6);
+  if (a5*a6 != 0)
+    b10 /= (a5 * a6);
   b11 = std::min(std::sqrt(std::pow(xx[1]-d_right, 2) + std::pow(xx[0]-d_left, 2)), radius)/radius;
-  b11 /= (a3 * a4);
+  if (a3*a4 != 0)
+    b11 /= (a3 * a4);
   b12 = std::min(std::sqrt(std::pow(xx[1]-d_right, 2) + std::pow(xx[0]-d_right, 2)), radius)/radius;
-  b12 /= (a7 * a8);
+  if (a7*a8 != 0)
+    b12 /= (a7 * a8);
 }
 double b_edges = b1 * b2 * b3 * b4 * b5 * b6 * b7 * b8 * b9 * b10 * b11 * b12;
 return a_corner * b_edges;

@@ -143,7 +143,7 @@ public:
     if(!rhs_vector_total.valid())
       DUNE_THROW(Dune::InvalidStateException, "RHS vector invalid!");
     Stuff::LA::Solver< MatrixTypeComplex > solver(system_matrix_);
-    solver.apply(rhs_vector_total, tmp_solution, "bicgstab.diagonal");
+    solver.apply(rhs_vector_total, tmp_solution, "bicgstab.ilut");
     if(!tmp_solution.valid())
       DUNE_THROW(Dune::InvalidStateException, "Solution vector invalid!");
     //make discrete functions
