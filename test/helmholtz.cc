@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
   Stuff::Grid::Providers::Cube< GridType > grid_provider(left_outer, right_outer, num_cubes);
   auto leafView = grid_provider.grid().leafGridView();
 
-  const double wavenumber = 28.0;
+  const double wavenumber = 32.0;
   const LambdaFct bdry_real([wavenumber, left_outer, right_outer](LambdaFct::DomainType x){if (std::abs(x[0] - right_outer) < 1e-12)
                                                                     return -2*wavenumber*std::sin(wavenumber*x[0]);
                                                                   if (std::abs(x[1] - left_outer) < 1e-12 || std::abs(x[1] - right_outer) < 1e-12)
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
   //=====================================================================================================================================================================
 /*
   //grid for the inclusions
-  const double num_ref_incl_cubes = 256;
+  unsigned int num_ref_incl_cubes = 256;
   Stuff::Grid::Providers::Cube< GridType > inclusion_grid_provider_ref(d_left, d_right, num_ref_incl_cubes);
   auto inclusion_ref_leafView = inclusion_grid_provider_ref.grid().leafGridView();
 
@@ -209,7 +209,7 @@ int main(int argc, char** argv) {
   // Example 2: Comparison of the HMM approximation to a homogenized reference solution and the resolution condition
   // TestCase: quadratic scatterer, incoming plane wave from the right
   //=====================================================================================================================================================================
-/*
+
   //filters for the scatterer
   const std::function< bool(const LeafGridView& , const EntityType& ) > filter_scatterer
           = [size_scatterer, cube_center](const LeafGridView& grid_view, const EntityType& macro_entity)
@@ -222,11 +222,7 @@ int main(int argc, char** argv) {
 
   //select the wave number by commenting out the corresponding line
   double wavenumber;
-  //wave numbers for comparison transmission and band gap
-  wavenumber = 29.0;
-  //wavenumber = 38.0;
-  //wave number for resolution condition
-  //wavenumber = 34.0;
+  wavenumber = 34.0;
   //wavenumber = 48.0;
   //wavenumber = 68.0;
 
@@ -295,10 +291,14 @@ int main(int argc, char** argv) {
     sol_hom_ref_func[0].vector().backend() = sol_hom.backend().real();
     sol_hom_ref_func[1].vector().backend() = sol_hom.backend().imag();
 
-    std::ofstream output("output_hmmhelmholtz_homerror_k_"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+".txt");
+    std::ofstream output("output_hmmhelmholtz_homerror_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+".txt");
     output<< "num_macro_cubes" << "\t" << "L2" << "\t" << "H1 seminorm" << "\n";
 
-    for (unsigned int num_macro_cubes : {8, 12, 16, 24, 32, 48, 64, 96}) {
+    std::vector< unsigned int > num_macro_cubes_range({8, 12, 16, 24, 32, 48, 64, 96});
+    if (wavenumber == 68.0)
+      num_macro_cubes_range = {8, 16, 24, 32, 48, 64, 96};
+
+    for (unsigned int num_macro_cubes : num_macro_cubes_range) {
       Stuff::Grid::Providers::Cube< GridType > macro_grid_provider(left_outer, right_outer, num_macro_cubes);
       auto macro_leafView = macro_grid_provider.grid().leafGridView();
       unsigned int num_cell_cubes = num_macro_cubes;
@@ -337,34 +337,32 @@ int main(int argc, char** argv) {
       output<< num_macro_cubes << "\t" << l2 << "\t" << h1_semi << "\n";
     }//end for loop
   }//end try block
-*/
+
 
   //==============================================================================================================================================================================
-  //Example 3: Errors between reference solution and HMM approximation(s)
+  //Example 3: Errors between reference solution, reference homogenized solution and HMM approximation(s)
+  //           Confirmation of convergence rates
   //           Comparison of transmission and band gap
   //==============================================================================================================================================================================
-
+/*
   const double delta = 1.0/32.0;
   double intpart;
 
   //select wave number
   double wavenumber;
-  wavenumber = 29.0;   //band gap
-  //wavenumber = 38.0;  //transmission
-
-  //decide whether you want to compute the homogenization error (involves a computation of the homogenized reference solution)
-  bool hom_error = false;
+  //wavenumber = 29.0;   //band gap
+  wavenumber = 38.0;  //transmission
 
   //some identifiers
   std::string scatterer_shape;
   std::string bdry_cond;
-
-   //==============================================================================
-   // TestCases: -Quadratic scatterer with plane wave in x_0-direction
-   //            -Quadratic scatterer with plane wave in direction (0.6, 0.8)
-   //            -stripe-shape scatterer with plane wave in direction (0.6, 0.8)
-   //==============================================================================
-
+*/
+  //==============================================================================
+  // TestCases: -Quadratic scatterer with plane wave in x_0-direction
+  //            -Quadratic scatterer with plane wave in direction (0.6, 0.8)
+  //            -stripe-shape scatterer with plane wave in direction (0.6, 0.8)
+  //==============================================================================
+/*
   //quadratic scatterer
   //---------------------
 
@@ -399,7 +397,7 @@ int main(int argc, char** argv) {
                                return 0.0;
                              }
                              return 0.0;}, 0);
-  scatterer_shape = "quadr";
+  scatterer_shape = "quadr";*/
   //-----------------------------------------------------------------------------------------------------------
 /*
   //stripe-shaped scatterer
@@ -437,8 +435,7 @@ int main(int argc, char** argv) {
                              return 0.0;}, 0);
   scatterer_shape = "stripe";*/
   //-------------------------------------------------------------------------------------------------------------------
-
-
+/*
   //plane wave in x_0 direction
   //----------------------------
 
@@ -455,7 +452,7 @@ int main(int argc, char** argv) {
                                                                     return -1*wavenumber*std::cos(wavenumber*x[0]);
                                                                   else
                                                                     return 0.0;}, 0);
-  bdry_cond = "plane";
+  bdry_cond = "plane";*/
   //---------------------------------------------------------------------------------------------------------------------------------------------------
 /*
   //plane wave in (0.6, 0.8) direction
@@ -484,14 +481,14 @@ int main(int argc, char** argv) {
                                                                     return -(wave_normal[1]+1)*wavenumber*std::cos(wavenumber*x.dot(wave_normal));}, 0); 
   bdry_cond = "oblique";*/
   //------------------------------------------------------------------------------------------------------------------------------------------------------
-
+/*
   //reference solution
   //instantiate  reference grid
   unsigned int num_ref_cubes = 512;
   Stuff::Grid::Providers::Cube< GridType > grid_provider(left_outer, right_outer, num_ref_cubes);
   auto ref_leafView = grid_provider.grid().leafGridView();
 
-  std::ofstream output("output_hmmhelmholtz_referror_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+"_"+scatterer_shape+"_"+bdry_cond+".txt");
+  std::ofstream output("output_hmmhelmholtz_error_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+"_"+scatterer_shape+"_"+bdry_cond+".txt");
 
   try {
     //compute reference solution
@@ -514,69 +511,73 @@ int main(int argc, char** argv) {
     sol_ref_func[1].vector().backend() = sol_ref.backend().imag();
     sol_ref_func[0].visualize("ref_discrete_solution_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+"_"+scatterer_shape+"_"+bdry_cond+"_real");
 
-    //compute homogenization error if desired
-    if (hom_error) {
-      unsigned int num_ref_cell_cubes = num_ref_cubes;
-      Stuff::Grid::Providers::Cube< GridType > cell_grid_provider_ref(0.0, 1.0, num_ref_cell_cubes);
-      auto& cell_grid_ref = cell_grid_provider_ref.grid();
-      //grid for the inclusions
-      Stuff::Grid::Providers::Cube< GridType > inclusion_grid_provider_ref(d_left, d_right, num_ref_cell_cubes/2);
-      auto inclusion_ref_leafView = inclusion_grid_provider_ref.grid().leafGridView();
+    //compute reference homogenized solution
+    unsigned int num_ref_cell_cubes = num_ref_cubes;
+    Stuff::Grid::Providers::Cube< GridType > cell_grid_provider_ref(0.0, 1.0, num_ref_cell_cubes);
+    auto& cell_grid_ref = cell_grid_provider_ref.grid();
+    //grid for the inclusions
+    Stuff::Grid::Providers::Cube< GridType > inclusion_grid_provider_ref(d_left, d_right, num_ref_cell_cubes/2);
+    auto inclusion_ref_leafView = inclusion_grid_provider_ref.grid().leafGridView();
 
-      // computation of effective parameters
-      SpaceType coarse_space(ref_leafView);
-      HMMHelmholtzDiscretization< LeafGridView, GridType, LeafGridView, 1>::EllipticCellProblem elliptic_cell(coarse_space, cell_grid_ref, a_diel, stabil, filter_inclusion);
-      ConstantFct k_squared_neg(-1*wavenumber*wavenumber);
-      HMMHelmholtzDiscretization< LeafGridView, GridType, LeafGridView, 1>::InclusionCellProblem incl_cell(inclusion_ref_leafView, a_incl_real, a_incl_imag, k_squared_neg);
-      std::cout<< "computing a_eff" << std::endl;
-      auto a_eff = elliptic_cell.effective_matrix();
-      std::cout << "computing mu_eff" << std::endl;
-      auto mu_eff = incl_cell.effective_param();
+    // computation of effective parameters
+    SpaceType coarse_space(ref_leafView);
+    HMMHelmholtzDiscretization< LeafGridView, GridType, LeafGridView, 1>::EllipticCellProblem elliptic_cell(coarse_space, cell_grid_ref, a_diel, stabil, filter_inclusion);
+    ConstantFct k_squared_neg(-1*wavenumber*wavenumber);
+    HMMHelmholtzDiscretization< LeafGridView, GridType, LeafGridView, 1>::InclusionCellProblem incl_cell(inclusion_ref_leafView, a_incl_real, a_incl_imag, k_squared_neg);
+    std::cout<< "computing a_eff" << std::endl;
+    auto a_eff = elliptic_cell.effective_matrix();
+    std::cout << "computing mu_eff" << std::endl;
+    auto mu_eff = incl_cell.effective_param();
 
-      //build piece-wise constant functions
-      const LambdaFct a_eff_fct([a_eff, size_scatterer, cube_center](LambdaFct::DomainType xx){if ((xx-cube_center).infinity_norm() <= 0.5*size_scatterer)
-                                                                                                 return a_eff[0][0];
-                                                                                               else return 1.0;}, 0);
-      const LambdaFct mu_eff_real_fct([mu_eff, size_scatterer, cube_center](LambdaFct::DomainType xx){if ((xx-cube_center).infinity_norm() <= 0.5*size_scatterer)
-                                                                                                        return mu_eff.real();
-                                                                                                      else return 1.0;}, 0);
-      const LambdaFct mu_eff_imag_fct([mu_eff, size_scatterer, cube_center](LambdaFct::DomainType xx){if ((xx-cube_center).infinity_norm() <= 0.5*size_scatterer)
-                                                                                                        return mu_eff.imag();
-                                                                                                      else return 0.0;}, 0);
+    //build piece-wise constant functions
+    const LambdaFct a_eff_fct([a_eff, size_scatterer, cube_center, scatterer_shape](LambdaFct::DomainType xx)
+                                                                                      {if ((scatterer_shape == "quadr" && (xx-cube_center).infinity_norm() <= 0.5*size_scatterer)
+                                                                                            || (scatterer_shape == "stripe" &&std::abs(xx[0]-cube_center[0]) <= 0.5*size_scatterer))
+                                                                                         return a_eff[0][0];
+                                                                                       else return 1.0;}, 0);
+    const LambdaFct mu_eff_real_fct([mu_eff, size_scatterer, cube_center, scatterer_shape](LambdaFct::DomainType xx)
+                                                                                             {if ((scatterer_shape == "quadr" && (xx-cube_center).infinity_norm() <= 0.5*size_scatterer)
+                                                                                                   || (scatterer_shape == "stripe" &&std::abs(xx[0]-cube_center[0]) <= 0.5*size_scatterer))
+                                                                                                return mu_eff.real();
+                                                                                              else return 1.0;}, 0);
+    const LambdaFct mu_eff_imag_fct([mu_eff, size_scatterer, cube_center, scatterer_shape](LambdaFct::DomainType xx)
+                                                                                             {if ((scatterer_shape == "quadr" && (xx-cube_center).infinity_norm() <= 0.5*size_scatterer)
+                                                                                                   || (scatterer_shape == "stripe" &&std::abs(xx[0]-cube_center[0]) <= 0.5*size_scatterer))
+                                                                                                return mu_eff.imag();
+                                                                                              else return 0.0;}, 0);
 
-      //assemble and solve homogenized system
-      DSG::BoundaryInfos::AllNeumann< LeafGridView::Intersection > hom_bdry_info;
-      HelmholtzDiscretization< LeafGridView, 1> homdiscr(ref_leafView, hom_bdry_info, a_eff_fct, zero, mu_eff_real_fct, mu_eff_imag_fct, wavenumber, bdry_real, bdry_imag, zero, zero);
-      std::cout<< "assembling on grid with "<< num_ref_cubes<< " cubes per direction"<<std::endl;
-      std::cout<< "number of reference entities "<< ref_leafView.size(0) << " and number of reference dofs: "<< homdiscr.space().mapper().size() <<std::endl;
-      homdiscr.assemble();
-      Dune::Stuff::LA::Container< complextype >::VectorType sol_hom;
-      std::cout<<"solving with bicgstab.ilut"<<std::endl;
-      Dune::Stuff::Common::Configuration hom_options = SolverType::options("bicgstab.ilut");
-      hom_options.set("max_iter", "100000", true);
-      homdiscr.solve(sol_hom, hom_options);
-      //make discrete function
-      Stuff::LA::Container< double >::VectorType solhom_real_ref(sol_hom.size());
-      std::vector< DiscreteFct > sol_hom_ref_func(2, DiscreteFct(SpaceType(ref_leafView), solhom_real_ref));
-      sol_hom_ref_func[0].vector().backend() = sol_hom.backend().real();
-      sol_hom_ref_func[1].vector().backend() = sol_hom.backend().imag();
-      sol_hom_ref_func[0].visualize("ref_hom_solution_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+"_"+scatterer_shape+"_"+bdry_cond+"_real");
+    //assemble and solve homogenized system
+    DSG::BoundaryInfos::AllNeumann< LeafGridView::Intersection > hom_bdry_info;
+    HelmholtzDiscretization< LeafGridView, 1> homdiscr(ref_leafView, hom_bdry_info, a_eff_fct, zero, mu_eff_real_fct, mu_eff_imag_fct, wavenumber, bdry_real, bdry_imag, zero, zero);
+    std::cout<< "assembling on grid with "<< num_ref_cubes<< " cubes per direction"<<std::endl;
+    std::cout<< "number of reference entities "<< ref_leafView.size(0) << " and number of reference dofs: "<< homdiscr.space().mapper().size() <<std::endl;
+    homdiscr.assemble();
+    Dune::Stuff::LA::Container< complextype >::VectorType sol_hom;
+    std::cout<<"solving with bicgstab.ilut"<<std::endl;
+    Dune::Stuff::Common::Configuration hom_options = SolverType::options("bicgstab.ilut");
+    hom_options.set("max_iter", "100000", true);
+    homdiscr.solve(sol_hom, hom_options);
+    //make discrete function
+    Stuff::LA::Container< double >::VectorType solhom_real_ref(sol_hom.size());
+    std::vector< DiscreteFct > sol_hom_ref_func(2, DiscreteFct(SpaceType(ref_leafView), solhom_real_ref));
+    sol_hom_ref_func[0].vector().backend() = sol_hom.backend().real();
+    sol_hom_ref_func[1].vector().backend() = sol_hom.backend().imag();
+    sol_hom_ref_func[0].visualize("ref_hom_solution_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+"_"+scatterer_shape+"_"+bdry_cond+"_real");
 
-      //compute homogenization error
-      std::cout<< "homogenization error computation" <<std::endl;
-      DifferenceFct hom_reference_error_real(sol_hom_ref_func[0], sol_ref_func[0]);
-      DifferenceFct hom_reference_error_imag(sol_hom_ref_func[1], sol_ref_func[1]);
-      Dune::GDT::Products::L2< LeafGridView > l2_product_operator_hom(ref_leafView);
-      Dune::GDT::Products::H1Semi< LeafGridView > h1_product_operator_hom(ref_leafView);
-      const double l2 = std::sqrt(l2_product_operator_hom.apply2(hom_reference_error_real, hom_reference_error_real)
-                                   + l2_product_operator_hom.apply2(hom_reference_error_imag, hom_reference_error_imag));
-      const double h1_semi = std::sqrt(h1_product_operator_hom.apply2(hom_reference_error_real, hom_reference_error_real)
-                                        + h1_product_operator_hom.apply2(hom_reference_error_imag, hom_reference_error_imag));
+    //compute homogenization error
+    std::cout<< "homogenization error computation" <<std::endl;
+    DifferenceFct hom_reference_error_real(sol_hom_ref_func[0], sol_ref_func[0]);
+    DifferenceFct hom_reference_error_imag(sol_hom_ref_func[1], sol_ref_func[1]);
+    Dune::GDT::Products::L2< LeafGridView > l2_product_operator_hom(ref_leafView);
+    Dune::GDT::Products::H1Semi< LeafGridView > h1_product_operator_hom(ref_leafView);
+    const double l2 = std::sqrt(l2_product_operator_hom.apply2(hom_reference_error_real, hom_reference_error_real)
+                                 + l2_product_operator_hom.apply2(hom_reference_error_imag, hom_reference_error_imag));
+    const double h1_semi = std::sqrt(h1_product_operator_hom.apply2(hom_reference_error_real, hom_reference_error_real)
+                                      + h1_product_operator_hom.apply2(hom_reference_error_imag, hom_reference_error_imag));
 
-      output<< "Homogenization error" << "\n" << "L2: " << "\t" << l2 << "H1 seminorm: " << "\t" << h1_semi << "\n";
-    }//compute homogenization error
+    output<< "Homogenization error" << "\n" << "L2: " << "\t" << l2 << "\t" << "H1 seminorm: " << "\t" << h1_semi << "\n" << "\n";
 
-    output << "errors reference solution to HMM" << "\n" << "num_macro_cubes" << "\t" << "L2" << "\t"  << "L2 corrector" << "\n";
+    output << "errors reference solutions to HMM" << "\n" << "num_macro_cubes" << "\t" << "L2 hom" << "\t" << "H1 semi hom" << "\t" << "L2 ref" << "\t"  << "L2 corrector" << "\n";
 
     for (unsigned int num_macro_cubes : {8, 16, 24, 32, 48, 64}) {
       Stuff::Grid::Providers::Cube< GridType > macro_grid_provider(left_outer, right_outer, num_macro_cubes);
@@ -600,39 +601,47 @@ int main(int argc, char** argv) {
       std::vector< HMMHelmholtzType::DiscreteFunctionType > macro_solution(2, macro_sol);
       std::pair< EllipticCorrectorType, InclusionCorrectorType > correctors(hmmhelmholtz.solve_and_correct(macro_solution));
 
-      if(num_macro_cubes == 64) {
-        macro_solution[0].visualize("hmm_sol_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+"_"+scatterer_shape+"_"+bdry_cond+"_real");
-      }
-
+      //prepare error functions
       ProlongedDiscrFct prolonged_ref_real(macro_solution[0], ref_leafView);
       ProlongedDiscrFct prolonged_ref_imag(macro_solution[1], ref_leafView);
-
-      //errors to reference solution
       RefDifferenceFct reference_error_real(sol_ref_func[0], prolonged_ref_real);
       RefDifferenceFct reference_error_imag(sol_ref_func[1], prolonged_ref_imag);
+      RefDifferenceFct hom_reference_error_real(sol_hom_ref_func[0], prolonged_ref_real);
+      RefDifferenceFct hom_reference_error_imag(sol_hom_ref_func[1], prolonged_ref_imag);
 
-      std::cout<< "macroscopic error on reference grid" <<std::endl;
       Dune::GDT::Products::L2< LeafGridView > l2_product_operator_ref(ref_leafView);
       Dune::GDT::Products::H1Semi< LeafGridView > h1_product_operator_ref(ref_leafView);
+
+      //errors to homogenized solution
+      std::cout<< "errors to homogenized solution" <<std::endl;
+      const double l2_hom = std::sqrt(l2_product_operator_ref.apply2(hom_reference_error_real, hom_reference_error_real)
+                                      + l2_product_operator_ref.apply2(hom_reference_error_imag, hom_reference_error_imag));
+      const double h1_semi_hom = std::sqrt(h1_product_operator_ref.apply2(hom_reference_error_real, hom_reference_error_real)
+                                           + h1_product_operator_ref.apply2(hom_reference_error_imag, hom_reference_error_imag));
+
+      //errors to reference solution
+      std::cout<< "macroscopic error on reference grid" <<std::endl;
       double l2_ref = std::sqrt(l2_product_operator_ref.apply2(reference_error_real, reference_error_real)
                                  + l2_product_operator_ref.apply2(reference_error_imag, reference_error_imag));
       std::cout<< "error to zeroth order approximation" <<std::endl;
       double l2_correc = hmmhelmholtz.reference_error(sol_ref_func, correctors.first, correctors.second, delta, "l2");
 
-      output<< num_macro_cubes << "\t" << l2_ref << "\t" << l2_correc << "\n";
+      output<< num_macro_cubes << "\t" << l2_hom << "\t" << h1_semi_hom << "\t" << l2_ref << "\t" << l2_correc << "\n";
 
       if (num_macro_cubes == 64) {
         std::cout<< "visualization" <<std::endl;
+        macro_solution[0].visualize("hmm_sol_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_macro_cubes))+"_"+scatterer_shape+"_"+bdry_cond+"_real");
         typedef Dune::GDT::DeltaCorrectorHelmholtz< HMMHelmholtzType::DiscreteFunctionType, HMMHelmholtzType::EllipticCellDiscreteFctType,
                                                     HMMHelmholtzType::InclusionCellDiscreteFctType > DeltaCorrectorType;
         DeltaCorrectorType corrector_real(correctors.first.macro_function(), correctors.first.cell_solutions(), correctors.second.cell_solutions(),
                                           filter_scatterer, filter_inclusion, wavenumber, delta, "real");
-        corrector_real.visualize(ref_leafView, "delta_correc_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_ref_cubes))+"_"+scatterer_shape+"_"+bdry_cond+"_real"+"_real", false);
+        corrector_real.visualize(ref_leafView, "delta_correc_k"+std::to_string(int(wavenumber))+"_"+std::to_string(int(num_macro_cubes))+"_on"+std::to_string(int(num_ref_cubes))
+                                                               +"_"+scatterer_shape+"_"+bdry_cond+"_real", false);
       }
 
     }//end for loop num_macro_cubes
   }//end try block
-
+*/
 
   catch(Dune::Exception& ee) {
     std::cout<< ee.what() <<std::endl;
