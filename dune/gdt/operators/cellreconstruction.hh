@@ -182,7 +182,10 @@ public:
     if(!current_rhs.valid())
       DUNE_THROW(Dune::InvalidStateException, "RHS vector invalid!");
     Stuff::LA::Solver< MatrixType > solver(system_matrix_);
-    solver.apply(current_rhs, current_solution_vector, "bicgstab.diagonal");
+    auto options = Stuff::LA::Solver< MatrixType >::options("bicgstab.diagonal");
+    options.set("max_iter", "40000", true);
+    options.set("precision", "1e-6", true);
+    solver.apply(current_rhs, current_solution_vector, options);
     if(!current_solution_vector.valid())
       DUNE_THROW(Dune::InvalidStateException, "Solution vector invalid!");
   }

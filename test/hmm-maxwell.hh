@@ -343,7 +343,7 @@ public:
     Spaces::DirichletConstraints< typename GridViewImp::Intersection >
            dirichlet_constraints(boundary_info_, cell_space_.mapper().size());
     system_assembler_.add(dirichlet_constraints);
-    system_assembler_.assemble(); 
+    system_assembler_.assemble();
     dirichlet_constraints.apply(system_matrix_real_);
     dirichlet_constraints.apply(system_matrix_imag_);
     for (size_t ii = 0; ii < dimDomain; ++ii) {
@@ -642,11 +642,7 @@ public:
     , id_cell_(coarse_space_, cellgrid, k_squared_, stabil_param_, filter_inclusion_)
     , inclusion_cell_(inclusion_gridview, periodic_mu_incl_real_, periodic_mu_incl_imag_, k_squared_neg_, incl_bdry_info_)
     , is_assembled_(false)
-    , system_matrix_real_(0,0)
-    , system_matrix_imag_(0,0)
     , system_matrix_(0,0)
-    , rhs_vector_real_(0)
-    , rhs_vector_imag_(0)
     , rhs_vector_(0)
   {}
 
@@ -678,11 +674,11 @@ public:
     if(!is_assembled_) {
       //prepare
       Stuff::LA::SparsityPatternDefault sparsity_pattern = coarse_space_.compute_volume_pattern();
-      system_matrix_real_ = RealMatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size(), sparsity_pattern);
-      system_matrix_imag_ = RealMatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size(), sparsity_pattern);
+      auto system_matrix_real = RealMatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size(), sparsity_pattern);
+      auto system_matrix_imag = RealMatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size(), sparsity_pattern);
       system_matrix_ = MatrixType(coarse_space_.mapper().size(), coarse_space_.mapper().size());
-      rhs_vector_real_ = RealVectorType(coarse_space_.mapper().size());
-      rhs_vector_imag_ = RealVectorType(coarse_space_.mapper().size());
+      auto rhs_vector_real = RealVectorType(coarse_space_.mapper().size());
+      auto rhs_vector_imag = RealVectorType(coarse_space_.mapper().size());
       rhs_vector_ = VectorType(coarse_space_.mapper().size());
       SystemAssembler< SpaceType > walker(coarse_space_);
 
@@ -692,9 +688,8 @@ public:
       LocalFunctionalType bdry_fctnal_imag(bdry_imag_);
       const LocalAssembler::Codim1Vector< LocalFunctionalType > bdry_vector_real(bdry_fctnal_real);
       const LocalAssembler::Codim1Vector< LocalFunctionalType > bdry_vector_imag(bdry_fctnal_imag);
-      walker.add(bdry_vector_real, rhs_vector_real_, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
-      walker.add(bdry_vector_imag, rhs_vector_imag_, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
-
+      walker.add(bdry_vector_real, rhs_vector_real, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
+      walker.add(bdry_vector_imag, rhs_vector_imag, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
 
       //solve cell problems
       AllCurlSolutionsStorageType curl_cell_solutions(dimDomain);
@@ -734,15 +729,15 @@ public:
       LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_real_assembler(hmmid_real);
       LocalAssembler::Codim0Matrix< HMMIdOperator > hmm_id_imag_assembler(hmmid_imag);
       assert(filter_scatterer_);
-      walker.add(hmm_curl_assembler, system_matrix_real_, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
-      walker.add(hmm_id_real_assembler, system_matrix_real_, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
-      walker.add(hmm_id_imag_assembler, system_matrix_imag_, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
+      walker.add(hmm_curl_assembler, system_matrix_real, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
+      walker.add(hmm_id_real_assembler, system_matrix_real, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
+      walker.add(hmm_id_imag_assembler, system_matrix_imag, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_scatterer_));
 
       //lhs outside scatterer
       MacroConstFct one(1.0);
       assert(filter_outside_);
       typedef GDT::Operators::CurlCurl< MacroConstFct, RealMatrixType, SpaceType > CurlOperatorType;
-      CurlOperatorType curl_operator_real(one, system_matrix_real_, coarse_space_);
+      CurlOperatorType curl_operator_real(one, system_matrix_real, coarse_space_);
       walker.add(curl_operator_real, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_outside_));
       //identity part
       MacroConstFct wavenumber_fct(-1.0*wavenumber_);
@@ -750,13 +745,13 @@ public:
       typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< MacroConstFct > > IdOperatorType;
       const IdOperatorType identity_operator_real(wavenumber_fct_squared);
       const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler_real(identity_operator_real);
-      walker.add(idMatrixAssembler_real, system_matrix_real_, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_outside_));
+      walker.add(idMatrixAssembler_real, system_matrix_real, new Stuff::Grid::ApplyOn::FilteredEntities< MacroGridViewType >(filter_outside_));
 
       //boundary part for complex Robin-type condition
       typedef LocalOperator::Codim1BoundaryIntegral< LocalEvaluation::ProductTangential< MacroConstFct > > BdryOperatorType;
       const BdryOperatorType bdry_operator(wavenumber_fct);
       const LocalAssembler::Codim1BoundaryMatrix< BdryOperatorType > bdry_assembler(bdry_operator);
-      walker.add(bdry_assembler, system_matrix_imag_, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
+      walker.add(bdry_assembler, system_matrix_imag, new Stuff::Grid::ApplyOn::NeumannIntersections< MacroGridViewType >(bdry_info_));
 
       //assemble
       std::cout<< "macro assembly" <<std::endl;
@@ -764,12 +759,12 @@ public:
 
       //assembly of total (complex) matrix and vector
       std::complex< double > im(0.0, 1.0);
-      system_matrix_.backend() = system_matrix_imag_.backend().template cast< std::complex< double > >();
+      system_matrix_.backend() = system_matrix_imag.backend().template cast< std::complex< double > >();
       system_matrix_.scal(im);
-      system_matrix_.backend() += system_matrix_real_.backend().template cast< std::complex< double > >();
-      rhs_vector_.backend() = rhs_vector_imag_.backend().template cast< std::complex< double > >();
+      system_matrix_.backend() += system_matrix_real.backend().template cast< std::complex< double > >();
+      rhs_vector_.backend() = rhs_vector_imag.backend().template cast< std::complex< double > >();
       rhs_vector_.scal(im);
-      rhs_vector_.backend() += rhs_vector_real_.backend().template cast< std::complex< double > > ();
+      rhs_vector_.backend() += rhs_vector_real.backend().template cast< std::complex< double > > ();
 
       is_assembled_ = true;
     }
@@ -942,11 +937,7 @@ private:
   const IdCellProblem                 id_cell_;
   const InclusionCellProblem          inclusion_cell_;
   mutable bool                        is_assembled_;
-  mutable RealMatrixType              system_matrix_real_;
-  mutable RealMatrixType              system_matrix_imag_;
   mutable MatrixType                  system_matrix_;
-  mutable RealVectorType              rhs_vector_real_;
-  mutable RealVectorType              rhs_vector_imag_;
   mutable VectorType                  rhs_vector_;
 }; //class HMMMaxwellDiscretization
 

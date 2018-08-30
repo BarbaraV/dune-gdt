@@ -308,11 +308,7 @@ public:
     , bdryterm_real_(bdryreal)
     , bdryterm_imag_(bdryimag)
     , is_assembled_(false)
-    , system_matrix_real_(0,0)
-    , system_matrix_imag_(0,0)
     , system_matrix_total_(0,0)
-    , rhs_vector_real_(0)
-    , rhs_vector_imag_(0)
     , rhs_vector_total_(0)
   {}
 
@@ -333,11 +329,11 @@ public:
     if (!is_assembled_) {
       //prepare
       Stuff::LA::SparsityPatternDefault sparsity_pattern = space_.compute_volume_pattern();
-      system_matrix_real_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
-      system_matrix_imag_ = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
+      auto system_matrix_real = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
+      auto system_matrix_imag = MatrixType(space_.mapper().size(), space_.mapper().size(), sparsity_pattern);
       system_matrix_total_ = MatrixTypeComplex(space_.mapper().size(), space_.mapper().size());
-      rhs_vector_real_ = VectorType(space_.mapper().size());
-      rhs_vector_imag_ = VectorType(space_.mapper().size());
+      auto rhs_vector_real = VectorType(space_.mapper().size());
+      auto rhs_vector_imag = VectorType(space_.mapper().size());
       rhs_vector_total_ = VectorTypeComplex(space_.mapper().size());
       SystemAssembler< SpaceType > grid_walker(space_);
 
@@ -347,14 +343,13 @@ public:
       LocalFunctionalType bdry_fctnal_imag(bdryterm_imag_);
       const LocalAssembler::Codim1Vector< LocalFunctionalType > bdry_vector_real(bdry_fctnal_real);
       const LocalAssembler::Codim1Vector< LocalFunctionalType > bdry_vector_imag(bdry_fctnal_imag);
-      grid_walker.add(bdry_vector_real, rhs_vector_real_, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
-      grid_walker.add(bdry_vector_imag, rhs_vector_imag_, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
-
+      grid_walker.add(bdry_vector_real, rhs_vector_real, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
+      grid_walker.add(bdry_vector_imag, rhs_vector_imag, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
       //lhs
       //curlcurl part
       typedef GDT::Operators::CurlCurl< CurlParameterType, MatrixType, SpaceType > CurlOperatorType;
-      CurlOperatorType curlcurl_operator_real(mu_real_, system_matrix_real_, space_);
-      CurlOperatorType curlcurl_operator_imag(mu_imag_, system_matrix_imag_, space_);
+      CurlOperatorType curlcurl_operator_real(mu_real_, system_matrix_real, space_);
+      CurlOperatorType curlcurl_operator_imag(mu_imag_, system_matrix_imag, space_);
       grid_walker.add(curlcurl_operator_real);
       grid_walker.add(curlcurl_operator_imag);
       //identity part
@@ -365,26 +360,26 @@ public:
       typedef LocalOperator::Codim0Integral< LocalEvaluation::Product< ProductFct > > IdOperatorType;
       const IdOperatorType identity_operator_real(id_param_real);
       const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler_real(identity_operator_real);
-      grid_walker.add(idMatrixAssembler_real, system_matrix_real_);
+      grid_walker.add(idMatrixAssembler_real, system_matrix_real);
       const IdOperatorType identity_operator_imag(id_param_imag);
       const LocalAssembler::Codim0Matrix< IdOperatorType > idMatrixAssembler_imag(identity_operator_imag);
-      grid_walker.add(idMatrixAssembler_imag, system_matrix_imag_);
+      grid_walker.add(idMatrixAssembler_imag, system_matrix_imag);
       //boundary part for complex impedance condition
       typedef LocalOperator::Codim1BoundaryIntegral< LocalEvaluation::ProductTangential< ConstantFct > > BdryOperatorType;
       const BdryOperatorType bdry_operator(wavenumber_fct);
       const LocalAssembler::Codim1BoundaryMatrix< BdryOperatorType > bdry_assembler(bdry_operator);
-      grid_walker.add(bdry_assembler, system_matrix_imag_, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
+      grid_walker.add(bdry_assembler, system_matrix_imag, new Stuff::Grid::ApplyOn::NeumannIntersections< GridViewType >(boundary_info_));
 
       grid_walker.assemble();
 
       // total (block) matrix and (block) vector have to be assembled
       std::complex< double > im(0.0, 1.0);
-      system_matrix_total_.backend() = system_matrix_imag_.backend().template cast<std::complex< double > >();
+      system_matrix_total_.backend() = system_matrix_imag.backend().template cast<std::complex< double > >();
       system_matrix_total_.scal(im);
-      system_matrix_total_.backend() += system_matrix_real_.backend().template cast< std::complex< double > >();
-      rhs_vector_total_.backend() = rhs_vector_imag_.backend().template cast<std::complex< double > >();
+      system_matrix_total_.backend() += system_matrix_real.backend().template cast< std::complex< double > >();
+      rhs_vector_total_.backend() = rhs_vector_imag.backend().template cast<std::complex< double > >();
       rhs_vector_total_.scal(im);
-      rhs_vector_total_.backend() += rhs_vector_real_.backend().template cast< std::complex< double > >();
+      rhs_vector_total_.backend() += rhs_vector_real.backend().template cast< std::complex< double > >();
 
       is_assembled_ = true;
     }
@@ -442,11 +437,7 @@ private:
   const Vectorfct&          bdryterm_real_;
   const Vectorfct&          bdryterm_imag_;
   mutable bool              is_assembled_;
-  mutable MatrixType        system_matrix_real_;
-  mutable MatrixType        system_matrix_imag_;
   mutable MatrixTypeComplex system_matrix_total_;
-  mutable VectorType        rhs_vector_real_;
-  mutable VectorType        rhs_vector_imag_;
   mutable VectorTypeComplex rhs_vector_total_;
 }; //class ScatteringDiscretization
 
