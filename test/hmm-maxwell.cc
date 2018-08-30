@@ -92,8 +92,8 @@ int main(int argc, char** argv) {
   const FieldVector< double, 3 > cube_center(0.5);
 
   //inclusion geometry
-  const double d_right = 0.75;
-  const double d_left = 0.25;
+  double d_right = 0.75;
+  double d_left = 0.25;
   const double size_inclusion = d_right - d_left;
 
   //filter returning true when NOT in the inclusion
@@ -389,6 +389,7 @@ int main(int argc, char** argv) {
   double wavenumber;
   //wavenumber = 9.0; //frequency band gap
   wavenumber = 12.0; //transmission
+  //wavenumber = 19.0;
   std::cout<< "wavenumber " << wavenumber << std::endl;
 
   DSG::BoundaryInfos::AllDirichlet< LeafGridView::Intersection > curl_bdry_info;
@@ -401,18 +402,18 @@ int main(int argc, char** argv) {
   const std::function< bool(const LeafGridView& , const EntityType& ) > filter_scatterer
           = [size_scatterer, cube_center](const LeafGridView& cell_grid_view, const EntityType& entity) -> bool
             {const auto xx = entity.geometry().center();
-             return ((xx-cube_center).infinity_norm() <= 0.5*size_scatterer);};
+             return (std::abs(xx[0]-cube_center[0]) <= 0.5*size_scatterer);};
   const std::function< bool(const LeafGridView& , const EntityType& ) > filter_outside
           = [size_scatterer, cube_center](const LeafGridView& cell_grid_view, const EntityType& entity) -> bool
             {const auto xx = entity.geometry().center();
-             return !((xx-cube_center).infinity_norm() <= 0.5*size_scatterer);};
+             return !(std::abs(xx[0]-cube_center[0]) <= 0.5*size_scatterer);};
   //------------------------------------------------------------------------------------------------------------------------------
 
   //plane wave in x_0 direction, polarized in x_1 direction
   //-----------------------------------------------------------
 
   //bdry condition
-  const VectorLambdaFct bdry_real([wavenumber, left_outer, right_outer](VectorLambdaFct::DomainType x){
+/*  const VectorLambdaFct bdry_real([wavenumber, left_outer, right_outer](VectorLambdaFct::DomainType x){
                                                                   Dune::FieldVector< double, 3 > ret(0.0);
                                                                   if (std::abs(x[2] - right_outer) < 1e-12 || std::abs(x[2]-left_outer) < 1e-12)
                                                                     ret[1] = -1*wavenumber*std::sin(wavenumber*x[0]);
@@ -433,37 +434,232 @@ int main(int argc, char** argv) {
 								    ret[0] = wavenumber*std::cos(wavenumber*x[0]);
  								  if (std::abs(x[0] - right_outer) < 1e-12)
 								    ret[1] = -2*wavenumber*std::cos(wavenumber*x[0]);
+                                                                  return ret;}, 0); */
+
+//in x_0 direction, polarized in x_2 direction
+  const VectorLambdaFct bdry_real([wavenumber, left_outer, right_outer](VectorLambdaFct::DomainType x){
+                                                                  Dune::FieldVector< double, 3 > ret(0.0);
+                                                                  if (std::abs(x[1] - right_outer) < 1e-12 || std::abs(x[1]-left_outer) < 1e-12)
+                                                                    ret[2] = -1*wavenumber*std::sin(wavenumber*x[0]);
+                                                                  if (std::abs(x[2] - left_outer) < 1e-12)
+                                                                    ret[0] = wavenumber*std::sin(wavenumber*x[0]);
+           							  if (std::abs(x[2] - right_outer) < 1e-12)
+								    ret[0] = -1*wavenumber*std::sin(wavenumber*x[0]);
+ 								  if (std::abs(x[0] - right_outer) < 1e-12)
+								    ret[2] = -2*wavenumber*std::sin(wavenumber*x[0]);
+                                                                  return ret;}, 0);
+  const VectorLambdaFct bdry_imag([wavenumber, left_outer, right_outer](VectorLambdaFct::DomainType x){
+                                                                  Dune::FieldVector< double, 3 > ret(0.0);
+                                                                  if (std::abs(x[1] - right_outer) < 1e-12 || std::abs(x[1]-left_outer) < 1e-12)
+                                                                    ret[2] = -1*wavenumber*std::cos(wavenumber*x[0]);
+                                                                  if (std::abs(x[2] - left_outer) < 1e-12)
+                                                                    ret[0] = wavenumber*std::cos(wavenumber*x[0]);
+           							  if (std::abs(x[2] - right_outer) < 1e-12)
+								    ret[0] = -1*wavenumber*std::cos(wavenumber*x[0]);
+ 								  if (std::abs(x[0] - right_outer) < 1e-12)
+								    ret[2] = -2*wavenumber*std::cos(wavenumber*x[0]);
                                                                   return ret;}, 0);
   //---------------------------------------------------------------------------------------------------------------------------------------------------
 
   //instantiate reference grid
-  unsigned int num_ref_cubes = 64;
-  Stuff::Grid::Providers::Cube< GridType > grid_provider(left_outer, right_outer, num_ref_cubes);
-  auto ref_leafView = grid_provider.grid().leafGridView();
 
   try{
-    //here one could compute a (heterogeneous) reference solution with the following delta dependent parameters
-    //const LambdaFct a_real([left_inner, right_inner, delta, &intpart, d_left, d_right](LambdaFct::DomainType x)
-    //                          {if (x[0] >= left_inner && x[0] <= right_inner && x[1] >= left_inner && x[1] <= right_inner && x[2] >= left_inner && x[2] <= right_inner) { //inside scatterer
-    //                             if (std::modf(x[0]/delta, &intpart) >= d_left && std::modf(x[0]/delta, &intpart) <= d_right
-    //                                     && std::modf(x[1]/delta, &intpart) >= d_left && std::modf(x[1]/delta, &intpart) <= d_right
-    //                                     && std::modf(x[2]/delta, &intpart) >= d_left && std::modf(x[2]/delta, &intpart) <= d_right)
-    //                               return delta*delta*1.0;   //a_incl_real
-    //                             return 1.0;   //a_diel
-    //                             }
-    //                           return 1.0;}, 0);  
-    //const LambdaFct a_imag([left_inner, right_inner, delta, &intpart, d_left, d_right](LambdaFct::DomainType x)
-    //                          {if (x[0] >= left_inner && x[0] <= right_inner && x[1] >= left_inner && x[1] <= right_inner && x[2] >= left_inner && x[2] <= right_inner) {
-    //                             if (std::modf(x[0]/delta, &intpart) >= d_left && std::modf(x[0]/delta, &intpart) <= d_right
-    //                                     && std::modf(x[1]/delta, &intpart) >= d_left && std::modf(x[1]/delta, &intpart) <= d_right
-    //                                     && std::modf(x[2]/delta, &intpart) >= d_left && std::modf(x[2]/delta, &intpart) <= d_right)
-    //                               return -0.01*delta*delta;  //a_incl_imag
-    //                             return 0.0;
-    //                             }
-    //                           return 0.0;}, 0);
+//filter returning true when NOT in the inclusion
+  const std::function< bool(const PeriodicViewType& , const PeriodicEntityType& ) > filter_inclusion1
+          = [size_inclusion, cube_center](const PeriodicViewType& cell_grid_view, const PeriodicEntityType& periodic_entity) -> bool
+            {const auto xx = periodic_entity.geometry().center();
+             return !((std::abs(xx[1]-cube_center[1]) <= 0.5*size_inclusion));};  //&& (std::abs(xx[1]-cube_center[1]) <= 0.5*size_inclusion) 
 
+/* const std::function< bool(const PeriodicViewType& , const PeriodicEntityType& ) > filter_inclusion1
+          = [size_inclusion, cube_center](const PeriodicViewType& cell_grid_view, const PeriodicEntityType& periodic_entity) -> bool
+            {const auto xx = periodic_entity.geometry().center();
+             return !((std::abs(xx[2]-cube_center[2]) <= 0.5*size_inclusion)&& (std::abs(xx[1]-cube_center[1]) <= 0.5*size_inclusion));}; */
+
+
+    unsigned int num_ref_cubes = 64;
+    Stuff::Grid::Providers::Cube< GridType > grid_provider(left_outer, right_outer, num_ref_cubes);
+    auto ref_leafView = grid_provider.grid().leafGridView(); 
+
+/*  {
     //maybe also a homogenized reference solution and the homogenization error are computed (see above)
+    unsigned int num_ref_cubes = 48;
+    Stuff::Grid::Providers::Cube< GridType > grid_provider(left_outer, right_outer, num_ref_cubes);
+    auto ref_leafView = grid_provider.grid().leafGridView();
 
+    //ConstantFct divparam(div_param);
+
+    //homogenized reference solution
+    Dune::FieldMatrix< double, 3, 3 > a_eff;
+    Dune::FieldMatrix< double, 3, 3 > mu_eff_out;
+    std::vector< Dune::FieldMatrix< double, 3, 3 > > mu_eff_in(2, mu_eff_out);
+*/
+   /* a_eff[0][0] = 0.5;
+    mu_eff_out[1][1] = 0.5;
+    mu_eff_out[2][2] = 0.5;
+    //mu_eff_in[0][1][1] = -0.271697;
+    //mu_eff_in[0][2][2] = -0.271697;
+    mu_eff_in[1][1][1] = 0.0291414;
+    mu_eff_in[1][2][2] = 0.0291414;*/
+
+    //computation of effective parameters
+/*    {
+      GDT::Spaces::Nedelec::PdelabBased< LeafGridView, 1, double, 3, 1 > coarse_space(ref_leafView);
+      unsigned int num_ref_cell_cubes = 24;
+      //outside inclusion
+      {
+        Stuff::Grid::Providers::Cube< GridType > cell_grid_provider_ref(0.0, 1.0, num_ref_cell_cubes);
+        auto& cell_grid_ref = cell_grid_provider_ref.grid();
+        ConstantFct k_squared(wavenumber*wavenumber);
+        HMMMaxwellType::IdCellProblem id_cell(coarse_space, cell_grid_ref, k_squared, stabil, filter_inclusion1);
+        HMMMaxwellType::CurlCellProblem curl_cell(coarse_space, cell_grid_ref, a_diel, divparam2, stabil, filter_inclusion1);
+        std::cout<< "computing effective inverse permittivity " <<std::endl;
+        a_eff = curl_cell.effective_matrix();
+	std::cout<< a_eff << std::endl;
+        std::cout << "computing effective permeability outside inclusions" <<std::endl;
+        mu_eff_out = id_cell.effective_matrix();
+	std::cout<< mu_eff_out<< std::endl;
+      }//outside inclusion 
+      //inside inclusion
+      {
+	//!!!!!!!!!!!!!!!!!!!!
+	FieldVector< double, 3 > d_lower_left(0.0);
+	d_lower_left[1] = d_left;
+	FieldVector< double, 3 > d_upper_right(1.0);
+	d_upper_right[1] = d_right;
+	std::vector< unsigned int > num_ref_incl_cubes(3, num_ref_cell_cubes);
+	num_ref_incl_cubes[1] = num_ref_cell_cubes/2;
+        Stuff::Grid::Providers::Cube< GridType > inclusion_grid_provider_ref(d_lower_left, d_upper_right, num_ref_incl_cubes);
+        auto inclusion_ref_leafView = inclusion_grid_provider_ref.grid().leafGridView();
+        ConstantFct k_squared_neg(-1*wavenumber*wavenumber);
+        HMMMaxwellType::InclusionCellProblem incl_cell(inclusion_ref_leafView, a_incl_real, a_incl_imag, k_squared_neg, curl_bdry_info);
+        std::cout<< "computing effective permeability inside inclusion" << std::endl;
+        mu_eff_in = incl_cell.effective_matrix();
+	std::cout<< mu_eff_in <<std::endl;
+      }//inside inclusion 
+    } //effective parameters 
+
+    //build piece-wise constant functions
+    const MatrixLambdaFct a_eff_fct([a_eff, cube_center, size_scatterer](LambdaFct::DomainType xx)
+                                      {if (std::abs(xx[0]-cube_center[0]) <= 0.5*size_scatterer)
+                                         return a_eff;
+                                       else return Stuff::Functions::internal::unit_matrix< double, 3 >();}, 0);
+    const MatrixLambdaFct mu_eff_real_fct([mu_eff_out, mu_eff_in, cube_center, size_scatterer](LambdaFct::DomainType xx)
+                                          {if (std::abs(xx[0]-cube_center[0]) <= 0.5*size_scatterer){
+                                             auto ret = mu_eff_out;
+                                             ret +=mu_eff_in[0];
+                                             return ret;
+                                           }
+                                           else return Stuff::Functions::internal::unit_matrix< double, 3 >();}, 0);
+    const MatrixLambdaFct mu_eff_imag_fct([mu_eff_in, cube_center, size_scatterer](LambdaFct::DomainType xx)
+                                          {if (std::abs(xx[0]-cube_center[0]) <= 0.5*size_scatterer)
+                                             return mu_eff_in[1];
+                                           else return Dune::FieldMatrix< double, 3, 3>();}, 0);
+
+    //assemble and solve homogenized system
+    Dune::Stuff::LA::Container< complextype >::VectorType sol_hom;
+    {
+      DSG::BoundaryInfos::AllNeumann< LeafGridView::Intersection > hom_bdry_info;
+      ScatteringDiscretization< LeafGridView, 1, true, true > homdiscr(ref_leafView, hom_bdry_info, a_eff_fct, zero_matrix, wavenumber, mu_eff_real_fct, mu_eff_imag_fct, bdry_real, bdry_imag);
+      std::cout<< "assembling on grid with "<< num_ref_cubes<< " cubes per direction"<<std::endl;
+      std::cout<< "number of reference entities "<< ref_leafView.size(0) << " and number of reference dofs: "<< homdiscr.space().mapper().size() <<std::endl;
+      homdiscr.assemble();
+      std::cout<<"solving with bicgstab.diagonal"<<std::endl;
+      Dune::Stuff::Common::Configuration hom_options = SolverType::options("bicgstab.diagonal");
+      hom_options.set("max_iter", "200000", true);
+      hom_options.set("precision", "1e-6", true);
+      homdiscr.solve(sol_hom, hom_options);
+    }
+    //make discrete function
+    Stuff::LA::Container< double >::VectorType solreal_hom(sol_hom.size());
+    std::vector< DiscreteFct > sol_hom_ref_func(2, DiscreteFct(SpaceType(ref_leafView), solreal_hom));
+    sol_hom_ref_func[0].vector().backend() = sol_hom.backend().real();
+    sol_hom_ref_func[1].vector().backend() = sol_hom.backend().imag();
+
+    //visualization
+    {
+      auto adapter = std::make_shared<Dune::Stuff::Functions::VisualizationAdapter<LeafGridView, 3, 1>>(sol_hom_ref_func[0]);
+      std::unique_ptr<VTKWriter<LeafGridView>> vtk_writer = DSC::make_unique<VTKWriter<LeafGridView>>(ref_leafView, VTK::conforming);
+      vtk_writer->addVertexData(adapter);
+      vtk_writer->write("hom_ref_sol_k"+std::to_string((int(wavenumber)))+"_"+std::to_string(num_ref_cubes)+"_real", VTK::appendedraw); 
+    }
+}//end bracket homogenized reference mesh
+*/
+
+/*    { unsigned int num_ref_cubes = 64;
+    Stuff::Grid::Providers::Cube< GridType > grid_provider(left_outer, right_outer, num_ref_cubes);
+    auto ref_leafView = grid_provider.grid().leafGridView();
+
+    double intpart;
+
+    //!!!!! modify d_left, d_right
+    //d_left = 0.375;
+    //d_right = 0.625;
+
+    //here one could compute a (heterogeneous) reference solution with the following delta dependent parameters
+    const LambdaFct a_real([left_inner, right_inner, delta, &intpart, d_left, d_right](LambdaFct::DomainType x)
+                              {if (x[0] >= left_inner && x[0] <= right_inner) { //inside scatterer
+                                 if (std::modf(x[1]/delta, &intpart) >= d_left && std::modf(x[1]/delta, &intpart) <= d_right) //
+                                   return delta*delta*1.0;   //a_incl_real
+                                 return 1.0;   //a_diel
+                                 }
+                               return 1.0;}, 0);  
+    const LambdaFct a_imag([left_inner, right_inner, delta, &intpart, d_left, d_right](LambdaFct::DomainType x)
+                              {if (x[0] >= left_inner && x[0] <= right_inner) {
+                                 if (std::modf(x[1]/delta, &intpart) >= d_left && std::modf(x[1]/delta, &intpart) <= d_right) //
+                                   return -0.01*delta*delta;  //a_incl_imag
+                                 return 0.0;
+                                 }
+                               return 0.0;}, 0); 
+*/
+/*    const LambdaFct a_real([left_inner, right_inner, delta, &intpart, d_left, d_right](LambdaFct::DomainType x)
+                              {if (x[0] >= left_inner && x[0] <= right_inner) { //inside scatterer
+                                 if (!(std::modf(x[0]/delta, &intpart) >= d_left && std::modf(x[0]/delta, &intpart) <= d_right
+                                       && std::modf(x[1]/delta, &intpart) >= d_left && std::modf(x[1]/delta, &intpart) <= d_right))
+                                   return delta*delta*1.0;   //a_incl_real
+                                 return 1.0;   //a_diel
+                                 }
+                               return 1.0;}, 0);  
+    const LambdaFct a_imag([left_inner, right_inner, delta, &intpart, d_left, d_right](LambdaFct::DomainType x)
+                              {if (x[0] >= left_inner && x[0] <= right_inner) {
+                                 if (!(std::modf(x[0]/delta, &intpart) >= d_left && std::modf(x[0]/delta, &intpart) <= d_right
+                                       && std::modf(x[1]/delta, &intpart) >= d_left && std::modf(x[1]/delta, &intpart) <= d_right))
+                                   return -0.01*delta*delta;  //a_incl_imag
+                                 return 0.0;
+                                 }
+                               return 0.0;}, 0);
+    a_real.visualize(ref_leafView, "parameter_real", false);
+*/
+/*
+    //reference solution
+    Dune::Stuff::LA::Container< complextype >::VectorType sol_ref;
+    {
+    DSG::BoundaryInfos::AllNeumann< LeafGridView::Intersection > ref_bdry_info;
+    ScatteringDiscretization< LeafGridView, 1, false, false > refdiscr(ref_leafView, ref_bdry_info, a_real, a_imag, wavenumber, one, zero, bdry_real, bdry_imag);
+    //std::cout<< "assembling on grid with "<< num_ref_cubes<< " cubes per direction"<<std::endl;
+    std::cout<< "number of reference entities "<< ref_leafView.size(0) << " and number of reference dofs: "<< refdiscr.space().mapper().size() <<std::endl;
+    refdiscr.assemble();
+    std::cout<<"solving "<<std::endl;
+    typedef Dune::Stuff::LA::Solver< ScatteringDiscretization< LeafGridView, 1, false, false >::MatrixTypeComplex > SolverType;
+    Dune::Stuff::Common::Configuration ref_options = SolverType::options("bicgstab.diagonal");
+    ref_options.set("max_iter", "500000", true);
+    ref_options.set("precision", "1e-4", true);
+    ref_options.set("post_check_solves_system", "0", true);
+    refdiscr.solve(sol_ref, ref_options);
+    }
+    //make discrete function
+    Stuff::LA::Container< double >::VectorType solreal_ref(sol_ref.size());
+    std::vector< ScatteringDiscretization< LeafGridView, 1, false, false>::DiscreteFunctionType > 
+                                             sol_ref_func(2, ScatteringDiscretization< LeafGridView, 1, false, false >::DiscreteFunctionType
+                                                                   (GDT::Spaces::Nedelec::PdelabBased< LeafGridView, 1, double, 3, 1 >(ref_leafView), solreal_ref));
+    sol_ref_func[0].vector().backend() = sol_ref.backend().real();
+    sol_ref_func[1].vector().backend() = sol_ref.backend().imag();
+  
+    auto adapter = std::make_shared<Dune::Stuff::Functions::VisualizationAdapter<LeafGridView, 3, 1>>(sol_ref_func[0]);
+    std::unique_ptr<VTKWriter<LeafGridView>> vtk_writer = DSC::make_unique<VTKWriter<LeafGridView>>(ref_leafView, VTK::conforming);
+    vtk_writer->addVertexData(adapter);
+    vtk_writer->write("reference_solution_k"+std::to_string(int(wavenumber))+"_"+std::to_string(num_ref_cubes), VTK::appendedraw); 
+  }//end bracket for reference mesh
+*/
     //HMM
     for (unsigned int num_macro_cubes : {16}) {//if this test is used for comparison with the reference solution, a series of meshes should be studied
       //grids
@@ -473,12 +669,20 @@ int main(int argc, char** argv) {
       Stuff::Grid::Providers::Cube< GridType > cell_grid_provider(0.0, 1.0, num_cell_cubes);
       auto& cell_grid = cell_grid_provider.grid();
       //grid for the inclusions
-      Stuff::Grid::Providers::Cube< GridType > inclusion_grid_provider(d_left, d_right, num_cell_cubes/2);
-      auto inclusion_leafView = inclusion_grid_provider.grid().leafGridView();
+      //Stuff::Grid::Providers::Cube< GridType > inclusion_grid_provider(d_left, d_right, num_cell_cubes/2);
+      //auto inclusion_leafView = inclusion_grid_provider.grid().leafGridView();
+	FieldVector< double, 3 > d_lower_left(0.0);
+	d_lower_left[1] = d_left;
+	FieldVector< double, 3 > d_upper_right(1.0);
+	d_upper_right[1] = d_right;
+	std::vector< unsigned int > num_incl_cubes(3, num_cell_cubes);
+	num_incl_cubes[1] = num_cell_cubes/2;
+        Stuff::Grid::Providers::Cube< GridType > inclusion_grid_provider(d_lower_left, d_upper_right, num_incl_cubes);
+        auto inclusion_leafView = inclusion_grid_provider.grid().leafGridView();
 
       DSG::BoundaryInfos::AllNeumann< LeafGridView::Intersection > hmmbdry_info;
       HMMMaxwellType hmmmaxwell(macro_leafView, cell_grid, inclusion_leafView, hmmbdry_info, curl_bdry_info, a_diel, a_incl_real, a_incl_imag, wavenumber, bdry_real, bdry_imag,
-                                filter_scatterer, filter_outside, filter_inclusion, divparam2, stabil, one, one, one);
+                                filter_scatterer, filter_outside, filter_inclusion1, divparam2, stabil, one, one, one);
 
       std::cout<< "hmm assembly for " << num_macro_cubes<< " cubes per dim on macro grid and "<< num_cell_cubes<< " cubes per dim on the micro grid"<< std::endl;
       hmmmaxwell.assemble();
@@ -505,14 +709,14 @@ int main(int argc, char** argv) {
         typedef Dune::GDT::DeltaCorrectorMaxwell< HMMMaxwellType::DiscreteFunctionType, HMMMaxwellType::CurlCellDiscreteFctType, HMMMaxwellType::IdCellDiscreteFctType,
                                                   HMMMaxwellType::InclusionCellDiscreteFctType > DeltaCorrectorType;
         DeltaCorrectorType corrector_real(std::get<0>(correctors).macro_function(), std::get<0>(correctors).cell_solutions(), std::get<1>(correctors).cell_solutions(),
-                                          std::get<2>(correctors).cell_solutions(), filter_scatterer, filter_inclusion, wavenumber, delta, "real");
+                                          std::get<2>(correctors).cell_solutions(), filter_scatterer, filter_inclusion1, wavenumber, delta, "real");
         auto adapter2 = std::make_shared<Dune::Stuff::Functions::VisualizationAdapter<LeafGridView, 3, 1>>(corrector_real);
         std::unique_ptr<VTKWriter<LeafGridView>> vtk_writer2 = DSC::make_unique<VTKWriter<LeafGridView>>(ref_leafView, VTK::conforming);
         vtk_writer2->addVertexData(adapter2);
         vtk_writer2->write("delta_corrector_k"+std::to_string(int(wavenumber))+"_"+std::to_string(num_macro_cubes)+"_conform", VTK::appendedraw);
       }
 
-    }//end for loop num_macro_cubes
+    }//end for loop num_macro_cubes 
   }//end try block
 
 //----------------------------------------------------------------------------------
